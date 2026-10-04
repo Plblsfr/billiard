@@ -1,5 +1,6 @@
 import { Match } from './game/match.js';
 import { ballsPerGroup } from './game/rack.js';
+import { Replay, ShotLog } from './game/replay.js';
 import {
   type ApiError,
   Online,
@@ -13,6 +14,7 @@ import {
 } from './net/online.js';
 import { Renderer } from './render/renderer.js';
 import { Sound } from './ui/audio.js';
+import { Chat } from './ui/chat.js';
 import { Controls } from './ui/controls.js';
 import { Hud, type HudView } from './ui/hud.js';
 
@@ -124,6 +126,12 @@ const hud = new Hud($('players'), $('status'), $('hint'), $('power'), $('spin'))
 
 let match: Match | null = null;
 let setup = loadSetup();
+/** Coups de la partie en cours, pour les revoir. */
+const shotLog = new ShotLog();
+/** Relecture en cours (la vraie partie continue derrière). */
+let replay: Replay | null = null;
+const btnReplay = $<HTMLButtonElement>('btn-replay');
+const replayBar = $('replay-bar');
 
 /** Partie en ligne en cours (null en jeu local). */
 interface Net {
@@ -179,13 +187,19 @@ const controls = new Controls(
     match: () => match,
     view: () => renderer.view,
     blocked: () =>
-      game.hidden !== false || document.querySelector('dialog[open]') !== null || !myTurn() || pendingShot !== null,
+      game.hidden !== false ||
+      document.querySelector('dialog[open]') !== null ||
+      !myTurn() ||
+      pendingShot !== null ||
+      replay !== null,
     shoot: (angle, power, spin) => {
       const m = match;
       if (!m || m.phase !== 'aiming' || power <= 0) return;
       strikeThen(m, angle, power, () => {
         m.resolveLocally = true;
+        const before = m.snapshot();
         if (!m.shoot(angle, power, spin)) return;
+        shotLog.start(before, angle, power, spin);
         sound.strike(power);
         if (net) {
           net.mine = true;
@@ -336,6 +350,7 @@ joinCode.addEventListener('input', () => {
 });
 
 function showMenu(): void {
+  exitReplay(false);
   match = null;
   sound.rolling(0);
   game.hidden = true;
@@ -348,6 +363,8 @@ function showMenu(): void {
 
 /** Affiche la table pour une partie (locale ou en ligne). */
 function showGame(m: Match): void {
+  exitReplay(false);
+  shotLog.clear();
   match = m;
   m.on({
     physics: (e) => {
@@ -356,6 +373,7 @@ function showGame(m: Match): void {
     },
     outcome: (o, mm) => {
       sound.outcome(o);
+      if (match === mm) shotLog.finish(mm.snapshot());
       if (net?.mine && match === mm) {
         net.mine = false;
         sendState();
@@ -462,9 +480,13 @@ function enterRoom(session: Session): void {
       net.connected = c;
       if (!match) renderLobby();
     },
+    chat: (lines) => {
+      if (net?.online === online) chat.add(lines);
+    },
     closed: (reason) => {
       if (!net || net.online !== online) return;
       endDialog.close();
+      chat.disable();
       net = null;
       saveSession(null);
       setRoomHash(null);
@@ -493,12 +515,14 @@ function enterRoom(session: Session): void {
   game.hidden = true;
   lobby.hidden = false;
   btnNew.hidden = true;
+  chat.reset(session.seat);
   renderLobby();
   online.connect();
 }
 
 function leaveRoom(): void {
   if (net) void net.online.leave();
+  chat.disable();
   net = null;
   saveSession(null);
   setRoomHash(null);
@@ -645,7 +669,10 @@ function onNetMsg(m: Incoming): void {
     net.aimTarget = { ...net.aimTarget, angle: m.angle, power: 0, cue: null };
     strikeThen(mm, m.angle, m.power, () => {
       mm.resolveLocally = false;
-      if (mm.shoot(m.angle, m.power, m.spin)) sound.strike(m.power);
+      const before = mm.snapshot();
+      if (!mm.shoot(m.angle, m.power, m.spin)) return;
+      shotLog.start(before, m.angle, m.power, m.spin);
+      sound.strike(m.power);
     });
   }
 }
@@ -686,6 +713,7 @@ function adopt(m: Incoming & StateMsg): void {
   } else {
     match!.restore(m.snap);
     match!.resolveLocally = true;
+    shotLog.finish(match!.snapshot());
     if (prevShots !== match!.shots) {
       controls.reset();
       // le coup joué ailleurs vient de se conclure : même signal sonore que chez le tireur
@@ -762,6 +790,122 @@ function smoothRemoteAim(m: Match, dt: number): void {
   }
 }
 
+// ---------- replay ----------
+function startReplay(all: boolean): void {
+  const shots = shotLog.complete;
+  if (!match || shots.length === 0) return;
+  cancelStrike();
+  renderer.reset();
+  replay = new Replay(shots, all ? 0 : shots.length - 1, all, {
+    strike: (cue, angle, power) => renderer.shot(cue, angle, power),
+    listener: {
+      physics: (e) => {
+        sound.physics(e);
+        renderer.event(e);
+      },
+    },
+    outcome: (o) => sound.outcome(o),
+  });
+  replayBar.hidden = false;
+  btnReplay.hidden = true;
+  replayAvailable = false;
+  hud.invalidate();
+  renderReplayBar();
+  $('replay-play').focus({ preventScroll: true });
+}
+
+/** Quitte la relecture ; en fin de partie, rouvre la fenêtre de fin si demandé. */
+function exitReplay(showEndAgain = true): void {
+  if (!replay) return;
+  replay = null;
+  replayBar.hidden = true;
+  sound.rolling(0);
+  renderer.reset();
+  hud.invalidate();
+  if (showEndAgain && match?.phase === 'over') showEnd(match);
+}
+
+const hint = $('hint');
+const REPLAY_HINT = 'Replay · Espace : pause · ← → : coup précédent / suivant · Échap : retour au jeu';
+let replayKey = '';
+function renderReplayBar(): void {
+  if (!replay) return;
+  const key = `${replay.index}:${replay.playing}:${replay.speed}:${replay.finished}`;
+  if (key === replayKey) return;
+  replayKey = key;
+  $('replay-label').textContent = `Coup ${replay.index + 1}/${replay.shots.length} · ${replay.shooter}`;
+  const play = $('replay-play');
+  play.textContent = replay.playing ? '⏸' : replay.finished ? '↻' : '▶';
+  play.setAttribute('aria-label', replay.playing ? 'Pause' : replay.finished ? 'Revoir' : 'Lecture');
+  $<HTMLButtonElement>('replay-prev').disabled = replay.index === 0;
+  $<HTMLButtonElement>('replay-next').disabled = replay.index >= replay.shots.length - 1;
+  const speed = $('replay-speed');
+  speed.textContent = `×${replay.speed}`;
+  speed.setAttribute('aria-label', `Vitesse ×${replay.speed}`);
+}
+
+function drawReplay(r: Replay, dt: number, now: number): void {
+  r.update(dt * 1000);
+  const rm = r.match;
+  sound.rolling(rollingSpeed(rm));
+  const aim = r.aim;
+  renderer.draw(rm, { angle: aim.angle, power: aim.power, placeValid: true, realistic: realisticAim() }, now);
+  hud.update(rm, null);
+  if (hint.textContent !== REPLAY_HINT) hint.textContent = REPLAY_HINT;
+  renderReplayBar();
+}
+
+let replayAvailable = false;
+function updateReplayButton(m: Match): void {
+  const ok = !replay && m.phase !== 'rolling' && shotLog.complete.length > 0;
+  if (ok === replayAvailable) return;
+  replayAvailable = ok;
+  btnReplay.hidden = !ok;
+}
+
+btnReplay.addEventListener('click', () => startReplay(false));
+$('end-replay').addEventListener('click', () => {
+  endDialog.close();
+  startReplay(true);
+});
+$('replay-exit').addEventListener('click', () => exitReplay());
+$('replay-play').addEventListener('click', () => replay?.toggle());
+$('replay-prev').addEventListener('click', () => replay?.goTo(replay.index - 1));
+$('replay-next').addEventListener('click', () => replay?.goTo(replay.index + 1));
+$('replay-speed').addEventListener('click', () => {
+  if (replay) replay.speed = replay.speed === 1 ? 2 : 1;
+});
+document.addEventListener('keydown', (e) => {
+  if (!replay || document.querySelector('dialog[open]')) return;
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  if (e.key === 'Escape') exitReplay();
+  else if (e.key === ' ' && t?.tagName !== 'BUTTON') replay.toggle();
+  else if (e.key === 'ArrowLeft') replay.goTo(replay.index - 1);
+  else if (e.key === 'ArrowRight') replay.goTo(replay.index + 1);
+  else return;
+  e.preventDefault();
+});
+
+// ---------- chat ----------
+const chat = new Chat(
+  {
+    panel: $('chat'),
+    list: $('chat-list'),
+    form: $<HTMLFormElement>('chat-form'),
+    input: $<HTMLInputElement>('chat-input'),
+    quick: $('chat-quick'),
+    error: $('chat-error'),
+    toggle: $<HTMLButtonElement>('btn-chat'),
+    unread: $('chat-unread'),
+    close: $('chat-close'),
+  },
+  {
+    send: (text) => (net ? net.online.say(text) : Promise.reject(new Error('Pas de salle'))),
+    incoming: () => sound.chat(),
+  },
+);
+
 // ---------- rendu ----------
 function resize(): void {
   const r = wrap.getBoundingClientRect();
@@ -775,10 +919,16 @@ function frame(now: number): void {
   last = now;
   if (net?.pending && match && (!match.world.isMoving() || now - net.pendingAt > 4000)) adopt(net.pending);
   const m = match;
-  if (m && !game.hidden) {
+  // un coup part sur la vraie table (joué ailleurs) : on quitte la relecture pour ne rien manquer
+  if (replay && m && m.phase === 'rolling') exitReplay(false);
+  if (m && !game.hidden && replay) {
     sound.frame();
     m.update(dt);
-    sound.rolling(m.phase === 'rolling' ? m.world.balls.reduce((v, b) => (b.onTable ? v + Math.hypot(b.vx, b.vy) : v), 0) : 0);
+    drawReplay(replay, dt, now);
+  } else if (m && !game.hidden) {
+    sound.frame();
+    m.update(dt);
+    sound.rolling(rollingSpeed(m));
     checkStalled(m, now);
     shareAim(m);
     smoothRemoteAim(m, dt);
@@ -790,8 +940,13 @@ function frame(now: number): void {
       realistic: realisticAim(),
     }, now);
     hud.update(m, hudView());
+    updateReplayButton(m);
   }
   requestAnimationFrame(frame);
+}
+
+function rollingSpeed(m: Match): number {
+  return m.phase === 'rolling' ? m.world.balls.reduce((v, b) => (b.onTable ? v + Math.hypot(b.vx, b.vy) : v), 0) : 0;
 }
 requestAnimationFrame(frame);
 
@@ -821,5 +976,5 @@ if (linkCode) {
 
 // Point d'accès pour les tests de bout en bout (?debug dans l'URL).
 if (new URLSearchParams(location.search).has('debug')) {
-  Object.assign(window, { __billard: { match: () => match, controls, net: () => net } });
+  Object.assign(window, { __billard: { match: () => match, controls, net: () => net, replay: () => replay, shotLog } });
 }

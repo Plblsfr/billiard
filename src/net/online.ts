@@ -55,6 +55,15 @@ export interface AimMsg {
 export type GameMsg = StateMsg | ShotMsg | AimMsg;
 export type Incoming = GameMsg & { from: number; version?: number };
 
+/** Message du chat de la salle. */
+export interface ChatLine {
+  id: number;
+  seat: number;
+  name: string;
+  text: string;
+  at: number;
+}
+
 export interface Session {
   code: string;
   seat: number;
@@ -66,6 +75,8 @@ export interface OnlineHandlers {
   msg(m: Incoming): void;
   connection(connected: boolean): void;
   closed(reason: string): void;
+  /** Messages de chat : l'historique à la connexion, puis un par un. */
+  chat(lines: ChatLine[], history: boolean): void;
 }
 
 const API = '/api';
@@ -143,6 +154,8 @@ export class Online {
     });
     src.addEventListener('room', (e) => this.handlers.room(JSON.parse((e as MessageEvent<string>).data) as RoomInfo));
     src.addEventListener('msg', (e) => this.handlers.msg(JSON.parse((e as MessageEvent<string>).data) as Incoming));
+    src.addEventListener('chat', (e) => this.handlers.chat([JSON.parse((e as MessageEvent<string>).data) as ChatLine], false));
+    src.addEventListener('chatlog', (e) => this.handlers.chat(JSON.parse((e as MessageEvent<string>).data) as ChatLine[], true));
     src.addEventListener('closed', (e) => {
       const { reason } = JSON.parse((e as MessageEvent<string>).data) as { reason: string };
       this.fail(reason);
@@ -199,6 +212,12 @@ export class Online {
       // hors file : un aperçu perdu ou refusé n'a pas d'importance
       post(`/rooms/${code}/send`, { token, msg: m }).catch(() => undefined);
     }, wait);
+  }
+
+  /** Envoie un message dans le chat (il revient par le flux, comme pour les autres). */
+  async say(text: string): Promise<void> {
+    const { code, token } = this.session;
+    await post(`/rooms/${code}/chat`, { token, text });
   }
 
   async leave(): Promise<void> {

@@ -157,6 +157,12 @@ export class Sound {
     lfo.stop(t + dur + 0.05);
   }
 
+  /** Nouveau message dans le chat. */
+  chat(): void {
+    this.tone('sine', 988, 988, 0.07, 0.05);
+    this.tone('sine', 1319, 1319, 0.1, 0.045, 0.07);
+  }
+
   // ---------- signaux de jeu ----------
   private foul(): void {
     this.tone('triangle', 330, 320, 0.16, 0.16, 0.12);

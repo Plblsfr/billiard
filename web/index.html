@@ -22,6 +22,10 @@
       <header class="topbar">
         <h1 class="brand">Billard <span class="hl">anglais</span></h1>
         <nav class="actions" aria-label="Partie">
+          <button type="button" class="btn btn-discret" id="btn-replay" hidden>Revoir le coup</button>
+          <button type="button" class="btn btn-discret chat-toggle" id="btn-chat" hidden aria-expanded="false" aria-controls="chat">
+            Chat <span class="unread" id="chat-unread" hidden></span>
+          </button>
           <button type="button" class="btn btn-discret" id="btn-rules">Règles</button>
           <button type="button" class="btn btn-discret" id="btn-sound" aria-pressed="false">Son : activé</button>
           <button type="button" class="btn btn-contour" id="btn-new" hidden>Nouvelle partie</button>
@@ -118,6 +122,17 @@
           <div class="stage">
             <div class="table-wrap" id="table-wrap">
               <canvas id="table" aria-label="Table de billard" role="img"></canvas>
+              <div class="replay-bar" id="replay-bar" role="group" aria-label="Replay" hidden>
+                <span class="replay-tag">Replay</span>
+                <span class="replay-label" id="replay-label" aria-live="polite"></span>
+                <span class="replay-buttons">
+                  <button type="button" class="icon-btn" id="replay-prev" aria-label="Coup précédent">⏮</button>
+                  <button type="button" class="icon-btn" id="replay-play" aria-label="Pause">⏸</button>
+                  <button type="button" class="icon-btn" id="replay-next" aria-label="Coup suivant">⏭</button>
+                  <button type="button" class="icon-btn replay-speed" id="replay-speed" aria-label="Vitesse ×1">×1</button>
+                  <button type="button" class="btn btn-plein" id="replay-exit">Retour au jeu</button>
+                </span>
+              </div>
             </div>
             <aside class="controls" aria-label="Commandes de tir">
               <div class="fine" role="group" aria-label="Visée fine">
@@ -197,7 +212,9 @@
           <li>tirer la jauge de puissance vers le bas puis relâcher pour jouer ;</li>
           <li>la bille d’effet règle le coulé (haut) et le rétro (bas) ;</li>
           <li>clavier : ← → viser (Maj : plus fin), ↑ ↓ puissance, Espace pour tirer ;</li>
-          <li>visée réaliste (au menu) : seule la direction de la blanche est tracée, sans bille fantôme ni trajectoires.</li>
+          <li>visée réaliste (au menu) : seule la direction de la blanche est tracée, sans bille fantôme ni trajectoires ;</li>
+          <li>« Revoir le coup » rejoue le dernier coup, « Revoir la partie » (en fin de partie) rejoue tous les coups :
+            Espace pour la pause, ← → coup précédent / suivant, Échap pour revenir au jeu.</li>
         </ul>
       </div>
       <form method="dialog" class="modal-actions">
@@ -211,6 +228,7 @@
       <p id="end-wait" class="lead" hidden>En attente de l’hôte pour la revanche…</p>
       <div class="modal-actions">
         <button type="button" class="btn btn-contour" id="end-menu">Menu</button>
+        <button type="button" class="btn btn-contour" id="end-replay">Revoir la partie</button>
         <button type="button" class="btn btn-plein" id="end-again">Revanche</button>
       </div>
     </dialog>
@@ -223,6 +241,26 @@
         <button class="btn btn-plein" value="ok" id="confirm-ok">Nouvelle partie</button>
       </form>
     </dialog>
+
+    <aside id="chat" class="chat" hidden aria-label="Chat de la salle">
+      <header class="chat-head">
+        <h2>Chat</h2>
+        <button type="button" class="icon-btn" id="chat-close" aria-label="Fermer le chat">×</button>
+      </header>
+      <ol class="chat-list" id="chat-list" aria-live="polite"></ol>
+      <div class="chat-quick" id="chat-quick" role="group" aria-label="Messages rapides">
+        <button type="button">Bien joué !</button>
+        <button type="button">Aïe…</button>
+        <button type="button">À toi !</button>
+        <button type="button">👏</button>
+        <button type="button">😅</button>
+      </div>
+      <form class="chat-form" id="chat-form">
+        <input id="chat-input" maxlength="200" autocomplete="off" enterkeyhint="send" placeholder="Écrire un message…" aria-label="Message" />
+        <button type="submit" class="btn btn-plein">Envoyer</button>
+      </form>
+      <p class="chat-error" id="chat-error" role="alert" hidden></p>
+    </aside>
 
     <noscript>Ce jeu a besoin de JavaScript.</noscript>
   </body>

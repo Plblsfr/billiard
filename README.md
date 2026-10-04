@@ -13,6 +13,8 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
   signaux de faute, de changement de main et de victoire.
 - Table tournée automatiquement en portrait sur téléphone.
 - Jeu en ligne : une salle, un lien à partager, chacun joue depuis son appareil et voit la visée des autres.
+- Chat de salle en ligne (dès la salle d'attente, phrases rapides, messages non lus, historique gardé pour les reconnexions).
+- Replay : « Revoir le coup » rejoue le dernier coup, « Revoir la partie » toute la partie (pause, coup précédent / suivant, ×2).
 - Aucune dépendance d'exécution : TypeScript compilé en modules ES, servi par nginx ; petit serveur de salons en Node pur.
 
 ## Règles retenues
@@ -39,6 +41,7 @@ s'affichent, à envoyer aux autres joueurs. La partie démarre quand toutes les 
 - Le serveur (`server/relay.mjs`) ne connaît pas les règles : il tient les places, relaie les messages (flux SSE + POST) et refuse
   qu'un joueur joue hors de son tour. Il garde en mémoire le dernier état de chaque salle.
 - Un joueur qui recharge la page ou perd la connexion reprend sa place en rouvrant le lien (jeton gardé dans le navigateur).
+- Chat : 200 caractères par message, 5 messages par tranche de 5 s et par joueur, 50 derniers messages gardés par salle.
 - Revanche lancée par l'hôte, la casse passe au joueur suivant. Les salles inactives depuis 2 h sont supprimées.
 - Les salles vivent en mémoire : redémarrer le relais ferme les parties en cours.
 

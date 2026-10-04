@@ -164,6 +164,45 @@ describe('relais de salons', () => {
     assert.equal((await post(`/api/rooms/${code}/join`, { name: 'Chloé' })).status, 404);
   });
 
+  it('relaie le chat à toute la salle, le garde pour les reconnexions et limite le débit', async () => {
+    const host = await post('/api/rooms', { name: 'Anna', count: 2 });
+    const code = host.body.code;
+    const guest = await post(`/api/rooms/${code}/join`, { name: 'Bob' });
+    const a = await listen(code, host.body.token);
+    const b = await listen(code, guest.body.token);
+    await a.next('hello');
+    await b.next('hello');
+
+    // le chat marche dès la salle d'attente, hors de tout tour de jeu
+    assert.equal((await post(`/api/rooms/${code}/chat`, { token: guest.body.token, text: '  Salut\n<b>Anna</b>  ' })).status, 200);
+    const seenByA = await a.next('chat');
+    const seenByB = await b.next('chat');
+    assert.equal(seenByA.text, 'Salut <b>Anna</b>');
+    assert.equal(seenByA.name, 'Bob');
+    assert.equal(seenByA.seat, 1);
+    assert.equal(seenByB.id, seenByA.id, 'l’expéditeur reçoit son propre message');
+
+    assert.equal((await post(`/api/rooms/${code}/chat`, { token: host.body.token, text: '   ' })).status, 400);
+    assert.equal((await post(`/api/rooms/${code}/chat`, { token: 'faux', text: 'x' })).status, 403);
+    const long = await post(`/api/rooms/${code}/chat`, { token: host.body.token, text: 'x'.repeat(500) });
+    assert.equal(long.status, 200);
+    assert.equal((await a.next('chat')).text.length, 200);
+
+    // 5 messages par tranche de 5 s : le 6e est refusé (1 déjà envoyé)
+    const codes = [];
+    for (let i = 0; i < 5; i++) codes.push((await post(`/api/rooms/${code}/chat`, { token: host.body.token, text: `m${i}` })).status);
+    assert.deepEqual(codes, [200, 200, 200, 200, 429]);
+
+    // une reconnexion reçoit l'historique
+    const a2 = await listen(code, host.body.token);
+    const log = await a2.next('chatlog');
+    assert.equal(log[0].text, 'Salut <b>Anna</b>');
+    assert.equal(log.length, 6);
+    a.close();
+    a2.close();
+    b.close();
+  });
+
   it('libère la place d’un invité parti avant la partie', async () => {
     const host = await post('/api/rooms', { name: 'Anna', count: 2 });
     const code = host.body.code;
