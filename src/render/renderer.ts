@@ -1,6 +1,6 @@
 import { BALL_R, BAULK_X, BLACK_SPOT, FOOT_SPOT, TABLE_H, TABLE_W } from '../game/constants.js';
 import type { Match } from '../game/match.js';
-import { traceAim } from '../game/physics.js';
+import { traceAim, type PhysicsEvent } from '../game/physics.js';
 import { legalTargets } from '../game/rules.js';
 import { POCKETS, POCKET_THROATS, type Vec } from '../game/table.js';
 import type { Ball, BallKind } from '../game/types.js';
@@ -30,11 +30,66 @@ export interface AimState {
   placeValid: boolean;
 }
 
+/** Bille en train de tomber dans une poche. */
+interface Fall {
+  kind: BallKind;
+  from: Vec;
+  to: Vec;
+  pocket: number;
+  t0: number;
+}
+
+/** Onde de couleur autour d'une poche quand une bille y tombe. */
+interface Ripple {
+  at: Vec;
+  r: number;
+  color: string;
+  t0: number;
+}
+
+/** Coup de queue : la queue part frapper la blanche puis s'efface. */
+interface Strike {
+  from: Vec;
+  angle: number;
+  gap: number;
+  t0: number;
+  /** Durée de la poussée jusqu'au contact (ms). */
+  lead: number;
+}
+
+/** Orientation d'une bille (matrice 3×3) pour voir la blanche rouler. */
+interface Spin3 {
+  m: number[];
+  x: number;
+  y: number;
+}
+
+const FALL_MS = 420;
+const RIPPLE_MS = 560;
+/** Accompagnement de la queue après le contact (ms). */
+const FOLLOW_MS = 320;
+/** Pois rouges de la blanche (axes d'un octaèdre). */
+const CUE_SPOTS: readonly [number, number, number][] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+const clamp01 = (t: number): number => Math.min(1, Math.max(0, t));
+
 export class Renderer {
   readonly view = new View();
   private ctx: CanvasRenderingContext2D;
   private dpr = 1;
   private feltPattern: CanvasPattern | null = null;
+  private falls: Fall[] = [];
+  private ripples: Ripple[] = [];
+  private strike: Strike | null = null;
+  private spins = new Map<number, Spin3>();
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: true });
@@ -70,8 +125,45 @@ export class Renderer {
     return this.ctx.createPattern(c, 'repeat');
   }
 
-  draw(m: Match, aim: AimState): void {
+  /** Efface les animations en cours (nouvelle partie). */
+  reset(): void {
+    this.falls = [];
+    this.ripples = [];
+    this.strike = null;
+    this.spins.clear();
+  }
+
+  /** Événement de la physique : une bille qui tombe lance son animation. */
+  event(e: PhysicsEvent, now = performance.now()): void {
+    if (e.type !== 'pocket') return;
+    const p = POCKETS[e.pocket];
+    if (!p) return;
+    // la bille file vers le fond de la poche, dans le sens de sa course
+    const speed = Math.hypot(e.vx, e.vy);
+    const push = Math.min(p.hole * 0.35, speed * 0.012);
+    const to = speed > 0 ? { x: p.c.x + (e.vx / speed) * push, y: p.c.y + (e.vy / speed) * push } : { ...p.c };
+    this.falls.push({ kind: e.kind, from: { x: e.x, y: e.y }, to, pocket: e.pocket, t0: now });
+    this.ripples.push({ at: { ...p.c }, r: p.hole, color: BALL_COLORS[e.kind].base, t0: now + FALL_MS * 0.55 });
+  }
+
+  /**
+   * La queue part frapper la blanche. Renvoie le délai (ms) avant le contact :
+   * c'est à ce moment qu'il faut lancer Match.shoot.
+   */
+  shot(cue: Vec, angle: number, power: number, now = performance.now()): number {
+    const lead = Math.round(110 - 60 * Math.min(1, Math.max(0, power)));
+    this.strike = { from: { x: cue.x, y: cue.y }, angle, gap: BALL_R + 10 + power * 200, t0: now, lead };
+    return lead;
+  }
+
+  /** Une queue est-elle en train de frapper ? */
+  get striking(): boolean {
+    return this.strike !== null;
+  }
+
+  draw(m: Match, aim: AimState, now = performance.now()): void {
     const ctx = this.ctx;
+    this.updateSpins(m.world.balls);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.view.apply(ctx, this.dpr);
@@ -82,6 +174,8 @@ export class Renderer {
 
     const balls = m.world.balls.filter((b) => b.onTable);
     const light = this.view.screenDirToWorld(-0.38, -0.42);
+    this.drawFalls(light, now);
+    this.drawRipples(now);
     for (const b of balls) this.drawShadow(b, light);
 
     if (m.phase === 'aiming' && !m.rules.isBreak) {
@@ -95,10 +189,131 @@ export class Renderer {
     }
 
     if (m.phase === 'placing') this.drawPlacementRing(m.cue, aim.placeValid);
-    if (m.phase === 'aiming') {
+    if (this.strike) this.drawStrike(now);
+    else if (m.phase === 'aiming') {
       this.drawAim(m, aim.angle);
-      this.drawCueStick(m.cue, aim.angle, aim.power);
+      this.drawCueStick(m.cue, aim.angle, BALL_R + 10 + aim.power * 200);
     }
+  }
+
+  // ---------- animations ----------
+  private drawFalls(light: Vec, now: number): void {
+    const ctx = this.ctx;
+    this.falls = this.falls.filter((f) => now - f.t0 < FALL_MS);
+    for (const f of this.falls) {
+      const t = clamp01((now - f.t0) / FALL_MS);
+      const p = POCKETS[f.pocket]!;
+      const k = easeOutCubic(t);
+      const x = f.from.x + (f.to.x - f.from.x) * k;
+      const y = f.from.y + (f.to.y - f.from.y) * k;
+      const scale = 1 - 0.45 * t * t;
+      ctx.save();
+      // la lèvre de la poche se referme sur la bille à mesure qu'elle s'enfonce
+      ctx.beginPath();
+      ctx.arc(p.c.x, p.c.y, p.hole + BALL_R * 2.2 * (1 - k), 0, Math.PI * 2);
+      ctx.clip();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.translate(-x, -y);
+      const ball: Ball = { id: -1, kind: f.kind, x, y, vx: 0, vy: 0, onTable: false };
+      this.drawBall(ball, light, 1 - clamp01((t - 0.75) / 0.25));
+      // plongée dans l'ombre du trou
+      ctx.fillStyle = `rgba(0,0,0,${0.85 * Math.pow(t, 1.4)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, BALL_R + 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  private drawRipples(now: number): void {
+    const ctx = this.ctx;
+    this.ripples = this.ripples.filter((r) => now - r.t0 < RIPPLE_MS);
+    for (const r of this.ripples) {
+      const t = (now - r.t0) / RIPPLE_MS;
+      if (t < 0) continue;
+      const k = easeOutCubic(t);
+      ctx.save();
+      ctx.globalAlpha = 0.75 * (1 - t);
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 6 * (1 - t) + 1.5;
+      ctx.beginPath();
+      ctx.arc(r.at.x, r.at.y, r.r + 8 + 46 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.5 * (1 - t);
+      ctx.strokeStyle = CREME;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r.at.x, r.at.y, r.r + 4 + 24 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private drawStrike(now: number): void {
+    const s = this.strike;
+    if (!s) return;
+    const ms = Math.max(0, now - s.t0);
+    if (ms >= s.lead + FOLLOW_MS) {
+      this.strike = null;
+      return;
+    }
+    // poussée qui accélère jusqu'à la blanche, accompagnement, puis la queue s'efface
+    const contact = BALL_R + 1;
+    let gap: number;
+    let alpha = 1;
+    if (ms < s.lead) gap = s.gap + (contact - s.gap) * Math.pow(ms / s.lead, 2);
+    else {
+      const t = (ms - s.lead) / FOLLOW_MS;
+      gap = contact - 46 * easeOutCubic(t);
+      alpha = 1 - clamp01((t - 0.3) / 0.7);
+    }
+    this.drawCueStick(s.from, s.angle, gap, alpha);
+  }
+
+  /** Fait tourner chaque bille d'après son déplacement (roulement sans glissement). */
+  private updateSpins(balls: readonly Ball[]): void {
+    for (const b of balls) {
+      if (b.kind !== 'cue') continue;
+      let s = this.spins.get(b.id);
+      if (!s) {
+        s = { m: [1, 0, 0, 0, 1, 0, 0, 0, 1], x: b.x, y: b.y };
+        // orientation de départ un peu de biais pour voir plusieurs pois
+        rotate(s.m, 0.7071, 0.7071, 0.6);
+        this.spins.set(b.id, s);
+      }
+      const dx = b.x - s.x;
+      const dy = b.y - s.y;
+      s.x = b.x;
+      s.y = b.y;
+      const d = Math.hypot(dx, dy);
+      // grand saut (replacement, état reçu) : pas de roulement
+      if (d < 1e-6 || d > BALL_R * 4) continue;
+      rotate(s.m, -dy / d, dx / d, d / BALL_R);
+    }
+  }
+
+  private drawCueSpots(b: Ball): void {
+    const s = this.spins.get(b.id);
+    if (!s) return;
+    const ctx = this.ctx;
+    const m = s.m;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = '#c8302c';
+    const spot = BALL_R * 0.2;
+    for (const [px, py, pz] of CUE_SPOTS) {
+      const wx = m[0]! * px + m[1]! * py + m[2]! * pz;
+      const wy = m[3]! * px + m[4]! * py + m[5]! * pz;
+      const wz = m[6]! * px + m[7]! * py + m[8]! * pz;
+      if (wz <= 0.02) continue;
+      ctx.beginPath();
+      ctx.ellipse(b.x + wx * BALL_R, b.y + wy * BALL_R, spot * wz, spot, Math.atan2(wy, wx), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   private drawTable(): void {
@@ -225,6 +440,7 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(b.x, b.y, BALL_R, 0, Math.PI * 2);
     ctx.fill();
+    if (b.kind === 'cue') this.drawCueSpots(b);
     // reflet
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.beginPath();
@@ -304,13 +520,13 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawCueStick(cue: Ball, angle: number, power: number): void {
+  private drawCueStick(cue: Vec, angle: number, gap: number, alpha = 1): void {
     const ctx = this.ctx;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
-    const gap = BALL_R + 10 + power * 200;
     const len = 1350;
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(cue.x - dx * gap, cue.y - dy * gap);
     ctx.rotate(angle + Math.PI);
     // ombre
@@ -341,6 +557,22 @@ export class Renderer {
     ctx.fillRect(len * 0.62 - 14, -10.6, 14, 21.2);
     ctx.restore();
   }
+}
+
+/** Applique à m (3×3, ligne par ligne) une rotation d'angle a autour de l'axe horizontal (ux, uy, 0). */
+function rotate(m: number[], ux: number, uy: number, a: number): void {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const t = 1 - c;
+  // matrice de Rodrigues pour un axe sans composante z
+  const r = [t * ux * ux + c, t * ux * uy, s * uy, t * ux * uy, t * uy * uy + c, -s * ux, -s * uy, s * ux, c];
+  const out = new Array<number>(9);
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      out[i * 3 + j] = r[i * 3]! * m[j]! + r[i * 3 + 1]! * m[3 + j]! + r[i * 3 + 2]! * m[6 + j]!;
+    }
+  }
+  for (let k = 0; k < 9; k++) m[k] = out[k]!;
 }
 
 function taper(ctx: CanvasRenderingContext2D, x: number, y: number, len: number, w0: number, w1: number): void {

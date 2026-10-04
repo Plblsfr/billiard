@@ -6,6 +6,10 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
 - Physique 2D maison : chocs entre billes, bandes, mâchoires et poches, coulé / rétro.
 - Règles du pub anglais : table ouverte après la casse, deux coups après une faute, bille en main derrière la ligne de baulk.
 - Ligne de visée avec bille fantôme et direction de la bille visée (rose si la bille est interdite).
+- Animations : la queue part frapper la blanche, les billes glissent et s'enfoncent dans les poches (onde de leur couleur),
+  la blanche à pois rouges roule visiblement.
+- Sons synthétisés (aucun fichier) : chocs, bandes, coup de queue, chute puis roulement dans la gouttière, roulement sur le drap,
+  signaux de faute, de changement de main et de victoire.
 - Table tournée automatiquement en portrait sur téléphone.
 - Jeu en ligne : une salle, un lien à partager, chacun joue depuis son appareil et voit la visée des autres.
 - Aucune dépendance d'exécution : TypeScript compilé en modules ES, servi par nginx ; petit serveur de salons en Node pur.

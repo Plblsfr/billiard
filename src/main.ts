@@ -146,20 +146,42 @@ let net: Net | null = null;
 const meIndex = (): number => (net && match ? net.order.indexOf(net.online.seat) : -1);
 const myTurn = (): boolean => !net || (match !== null && net.order[match.rules.current] === net.online.seat);
 
+/** Coup en attente : la queue est en route vers la blanche. */
+let pendingShot: number | null = null;
+
+/** Anime la queue jusqu'à la blanche, puis joue le coup au moment du contact. */
+function strikeThen(m: Match, angle: number, power: number, hit: () => void): void {
+  if (pendingShot !== null) return;
+  const lead = renderer.shot(m.cue, angle, power);
+  pendingShot = window.setTimeout(() => {
+    pendingShot = null;
+    if (match === m && m.phase === 'aiming') hit();
+  }, lead);
+}
+
+function cancelStrike(): void {
+  if (pendingShot !== null) window.clearTimeout(pendingShot);
+  pendingShot = null;
+}
+
 const controls = new Controls(
   {
     match: () => match,
     view: () => renderer.view,
-    blocked: () => game.hidden !== false || document.querySelector('dialog[open]') !== null || !myTurn(),
+    blocked: () =>
+      game.hidden !== false || document.querySelector('dialog[open]') !== null || !myTurn() || pendingShot !== null,
     shoot: (angle, power, spin) => {
-      if (!match) return;
-      match.resolveLocally = true;
-      if (!match.shoot(angle, power, spin)) return;
-      sound.strike(power);
-      if (net) {
-        net.mine = true;
-        net.online.send({ type: 'shot', angle, power, spin, shots: match.shots }).catch(() => undefined);
-      }
+      const m = match;
+      if (!m || m.phase !== 'aiming' || power <= 0) return;
+      strikeThen(m, angle, power, () => {
+        m.resolveLocally = true;
+        if (!m.shoot(angle, power, spin)) return;
+        sound.strike(power);
+        if (net) {
+          net.mine = true;
+          net.online.send({ type: 'shot', angle, power, spin, shots: m.shots }).catch(() => undefined);
+        }
+      });
     },
     placed: () => {
       if (net) sendState();
@@ -287,6 +309,7 @@ joinCode.addEventListener('input', () => {
 
 function showMenu(): void {
   match = null;
+  sound.rolling(0);
   game.hidden = true;
   lobby.hidden = true;
   menu.hidden = false;
@@ -299,8 +322,12 @@ function showMenu(): void {
 function showGame(m: Match): void {
   match = m;
   m.on({
-    physics: (e) => sound.physics(e),
-    outcome: (_o, mm) => {
+    physics: (e) => {
+      sound.physics(e);
+      renderer.event(e);
+    },
+    outcome: (o, mm) => {
+      sound.outcome(o);
       if (net?.mine && match === mm) {
         net.mine = false;
         sendState();
@@ -310,6 +337,8 @@ function showGame(m: Match): void {
   });
   controls.angle = 0;
   controls.reset();
+  cancelStrike();
+  renderer.reset();
   hud.invalidate();
   menu.hidden = true;
   lobby.hidden = true;
@@ -567,9 +596,12 @@ function onNetMsg(m: Incoming): void {
       match.resolveLocally = true;
     }
     if (match.phase !== 'aiming' || m.shots !== match.shots + 1) return;
-    match.resolveLocally = false;
-    if (match.shoot(m.angle, m.power, m.spin)) sound.strike(m.power);
+    const mm = match;
     net.remoteAim = { angle: m.angle, power: 0 };
+    strikeThen(mm, m.angle, m.power, () => {
+      mm.resolveLocally = false;
+      if (mm.shoot(m.angle, m.power, m.spin)) sound.strike(m.power);
+    });
   }
 }
 
@@ -608,7 +640,11 @@ function adopt(m: Incoming & StateMsg): void {
   } else {
     match!.restore(m.snap);
     match!.resolveLocally = true;
-    if (prevShots !== match!.shots) controls.reset();
+    if (prevShots !== match!.shots) {
+      controls.reset();
+      // le coup joué ailleurs vient de se conclure : même signal sonore que chez le tireur
+      if (match!.lastOutcome) sound.outcome(match!.lastOutcome);
+    }
     hud.invalidate();
   }
   const cur = match!;
@@ -648,7 +684,7 @@ function hudView(): HudView | null {
 
 /** Diffuse la visée (ou la blanche en main) du joueur qui a la main sur cet écran. */
 function shareAim(m: Match): void {
-  if (!net || !myTurn()) return;
+  if (!net || !myTurn() || pendingShot !== null) return;
   let key = '';
   if (m.phase === 'aiming') key = `a${controls.angle.toFixed(4)}:${controls.power.toFixed(2)}`;
   else if (m.phase === 'placing') key = `p${m.cue.x.toFixed(1)}:${m.cue.y.toFixed(1)}`;
@@ -677,6 +713,7 @@ function frame(now: number): void {
   if (m && !game.hidden) {
     sound.frame();
     m.update(dt);
+    sound.rolling(m.phase === 'rolling' ? m.world.balls.reduce((v, b) => (b.onTable ? v + Math.hypot(b.vx, b.vy) : v), 0) : 0);
     checkStalled(m, now);
     shareAim(m);
     const aim = net && !myTurn() ? net.remoteAim : { angle: controls.angle, power: controls.power };
@@ -684,7 +721,7 @@ function frame(now: number): void {
       angle: aim.angle,
       power: aim.power,
       placeValid: m.phase === 'placing' && m.canPlaceCue(m.cue),
-    });
+    }, now);
     hud.update(m, hudView());
   }
   requestAnimationFrame(frame);

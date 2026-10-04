@@ -17,7 +17,17 @@ import type { Ball, BallKind } from './types.js';
 export type PhysicsEvent =
   | { type: 'ball'; a: number; b: number; speed: number }
   | { type: 'cushion'; a: number; speed: number }
-  | { type: 'pocket'; a: number; pocket: number };
+  | {
+      type: 'pocket';
+      a: number;
+      pocket: number;
+      kind: BallKind;
+      /** Position et vitesse de la bille au moment où elle tombe (animation). */
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+    };
 
 const TWO_R = BALL_R * 2;
 /** Au-delà de cette distance hors de la table, une bille est forcément dans une poche. */
@@ -205,13 +215,14 @@ export class World {
     }
     if (pocketIndex < 0) return;
     const p = POCKETS[pocketIndex]!;
+    const fall = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
     b.onTable = false;
     b.vx = 0;
     b.vy = 0;
     b.x = p.c.x;
     b.y = p.c.y;
     this.potted.push(b);
-    this.events.push({ type: 'pocket', a: b.id, pocket: pocketIndex });
+    this.events.push({ type: 'pocket', a: b.id, pocket: pocketIndex, kind: b.kind, ...fall });
   }
 }
 
