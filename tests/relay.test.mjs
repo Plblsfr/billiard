@@ -81,7 +81,7 @@ describe('relais de salons', () => {
   });
 
   it('crée une salle, fait entrer un joueur et relaie les messages dans l’ordre du jeu', async () => {
-    const host = await post('/api/rooms', { name: 'Anna', count: 2 });
+    const host = await post('/api/rooms', { name: 'Anna', count: 2, realistic: true });
     assert.equal(host.status, 201);
     assert.match(host.body.code, /^[A-Z2-9]{5}$/);
     const code = host.body.code;
@@ -90,6 +90,7 @@ describe('relais de salons', () => {
     assert.deepEqual(await a.next('hello'), { seat: 0 });
     let room = await a.next('room');
     assert.equal(room.seats[1], null);
+    assert.equal(room.realistic, true, 'le mode de visée de la salle est partagé');
 
     // l'état ne part pas tant que la salle n'est pas pleine
     assert.equal((await post(`/api/rooms/${code}/send`, { token: host.body.token, msg: state(0) })).status, 409);

@@ -12,6 +12,8 @@ export interface SeatInfo {
 export interface RoomInfo {
   code: string;
   count: 2 | 3;
+  /** Visée réaliste : seule la direction de la blanche est tracée. */
+  realistic: boolean;
   host: number;
   started: boolean;
   seats: (SeatInfo | null)[];
@@ -46,6 +48,8 @@ export interface AimMsg {
   power: number;
   x?: number;
   y?: number;
+  /** Horodatage d'envoi : les aperçus peuvent arriver dans le désordre, on ignore les plus anciens. */
+  seq?: number;
 }
 
 export type GameMsg = StateMsg | ShotMsg | AimMsg;
@@ -75,7 +79,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
-const AIM_INTERVAL = 70;
+const AIM_INTERVAL = 50;
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
@@ -98,8 +102,8 @@ export function normalizeCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
-export async function createRoom(name: string, count: 2 | 3): Promise<Session> {
-  return post<Session>('/rooms', { name, count });
+export async function createRoom(name: string, count: 2 | 3, realistic: boolean): Promise<Session> {
+  return post<Session>('/rooms', { name, count, realistic });
 }
 
 export async function joinRoom(code: string, name: string, token?: string): Promise<Session> {
@@ -178,7 +182,7 @@ export class Online {
     return p.then((r) => r.version);
   }
 
-  /** Aperçu de visée : seul le plus récent compte, au plus un toutes les 70 ms. */
+  /** Aperçu de visée : seul le plus récent compte, au plus un toutes les 50 ms. */
   aim(msg: AimMsg): void {
     this.aimPending = msg;
     if (this.aimTimer !== null) return;
@@ -189,6 +193,8 @@ export class Online {
       this.aimPending = null;
       if (!m || this.closed) return;
       this.aimLast = performance.now();
+      // horloge murale : reste croissante même si l'expéditeur recharge sa page
+      m.seq = Math.round(performance.timeOrigin + this.aimLast);
       const { code, token } = this.session;
       // hors file : un aperçu perdu ou refusé n'a pas d'importance
       post(`/rooms/${code}/send`, { token, msg: m }).catch(() => undefined);

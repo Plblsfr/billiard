@@ -51,6 +51,14 @@
                   <button type="button" data-count="3" aria-pressed="false">3 joueurs</button>
                 </div>
               </fieldset>
+              <fieldset class="field">
+                <legend>Visée</legend>
+                <div class="segmented" role="group" aria-label="Aide à la visée">
+                  <button type="button" data-aim="assist" aria-pressed="true">Assistée</button>
+                  <button type="button" data-aim="real" aria-pressed="false">Réaliste</button>
+                </div>
+                <small class="field-help" id="aim-help"></small>
+              </fieldset>
               <div class="names">
                 <label class="field">
                   <span id="p1-label">Joueur 1 <small>casse</small></span>
@@ -97,6 +105,7 @@
               <input id="lobby-link" readonly aria-label="Lien de la salle" />
               <button type="button" class="btn btn-plein" id="btn-copy">Copier</button>
             </div>
+            <p class="lobby-mode" id="lobby-mode"></p>
             <ol class="seats" id="lobby-seats"></ol>
             <p class="lobby-status" id="lobby-status" role="status" aria-live="polite"></p>
             <button type="button" class="btn btn-contour btn-large" id="btn-leave">Quitter la salle</button>
@@ -187,7 +196,8 @@
           <li>glisser sur la table pour viser, molette ou ↺ ↻ pour affiner ;</li>
           <li>tirer la jauge de puissance vers le bas puis relâcher pour jouer ;</li>
           <li>la bille d’effet règle le coulé (haut) et le rétro (bas) ;</li>
-          <li>clavier : ← → viser (Maj : plus fin), ↑ ↓ puissance, Espace pour tirer.</li>
+          <li>clavier : ← → viser (Maj : plus fin), ↑ ↓ puissance, Espace pour tirer ;</li>
+          <li>visée réaliste (au menu) : seule la direction de la blanche est tracée, sans bille fantôme ni trajectoires.</li>
         </ul>
       </div>
       <form method="dialog" class="modal-actions">

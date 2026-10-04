@@ -4,7 +4,7 @@
 // entre navigateurs et garde le dernier état de la partie pour les reconnexions.
 // Le navigateur du joueur qui tire calcule le coup et envoie l'état qui en résulte.
 //
-//   POST /api/rooms                  {name, count}          → {code, seat, token}
+//   POST /api/rooms                  {name, count, realistic} → {code, seat, token}
 //   POST /api/rooms/:code/join       {name, token?}         → {seat, token}
 //   GET  /api/rooms/:code/events?token=…                    → flux SSE (hello, room, msg, closed)
 //   POST /api/rooms/:code/send       {token, msg}           → {version?}
@@ -105,6 +105,7 @@ export function createRelay(opts = {}) {
     return {
       code: room.code,
       count: room.count,
+      realistic: room.realistic,
       host: 0,
       started: room.state !== null,
       seats: room.seats.map((s) => (s ? { name: s.name, online: s.clients.size > 0 } : null)),
@@ -133,7 +134,8 @@ export function createRelay(opts = {}) {
     const token = randomUUID();
     const seats = Array(count).fill(null);
     seats[0] = { name: cleanName(body.name, 'Joueur 1'), token, clients: new Set() };
-    rooms.set(code, { code, count, seats, state: null, version: 0, turn: 0, over: false, touched: now() });
+    const realistic = body.realistic === true;
+    rooms.set(code, { code, count, realistic, seats, state: null, version: 0, turn: 0, over: false, touched: now() });
     json(res, 201, { code, seat: 0, token });
   }
 

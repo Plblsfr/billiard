@@ -289,6 +289,17 @@ main {
   background: linear-gradient(90deg, var(--rouge) 50%, var(--jaune) 50%);
 }
 
+.field-help {
+  color: var(--gris);
+  font-size: 0.85rem;
+  min-height: 1.4em;
+}
+
+.lobby-mode {
+  margin: var(--espace-4) 0 0;
+  font-size: 0.9rem;
+}
+
 /* ---------- en ligne ---------- */
 .or {
   display: flex;

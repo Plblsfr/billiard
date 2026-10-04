@@ -5,7 +5,8 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
 
 - Physique 2D maison : chocs entre billes, bandes, mâchoires et poches, coulé / rétro.
 - Règles du pub anglais : table ouverte après la casse, deux coups après une faute, bille en main derrière la ligne de baulk.
-- Ligne de visée avec bille fantôme et direction de la bille visée (rose si la bille est interdite).
+- Visée assistée (bille fantôme, direction de la bille visée, rose si elle est interdite) ou **réaliste**
+  (seulement la direction de la blanche) ; en ligne, l'hôte choisit pour toute la salle.
 - Animations : la queue part frapper la blanche, les billes glissent et s'enfoncent dans les poches (onde de leur couleur),
   la blanche à pois rouges roule visiblement.
 - Sons synthétisés (aucun fichier) : chocs, bandes, coup de queue, chute puis roulement dans la gouttière, roulement sur le drap,
@@ -18,7 +19,7 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
 
 | | 2 joueurs | 3 joueurs |
 |---|---|---|
-| Billes | 7 rouges, 7 jaunes, la noire | 4 rouges, 4 jaunes, 4 bleues, la noire |
+| Billes | 7 rouges, 7 jaunes, la noire | 6 rouges, 6 jaunes, 6 bleues, la noire |
 | Attribution | la 1re bille rentrée sans faute après la casse donne sa couleur ; l'autre joueur reçoit l'autre | idem ; la dernière couleur revient automatiquement au dernier joueur sans couleur |
 | Noire trop tôt ou avec faute | défaite | le joueur est éliminé, ses billes quittent la table, la noire est replacée |
 

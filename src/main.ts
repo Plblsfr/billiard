@@ -1,4 +1,5 @@
 import { Match } from './game/match.js';
+import { ballsPerGroup } from './game/rack.js';
 import {
   type ApiError,
   Online,
@@ -30,6 +31,8 @@ interface Setup {
   mode: Mode;
   count: 2 | 3;
   names: string[];
+  /** Visée réaliste : seulement la direction de la blanche. */
+  realistic: boolean;
 }
 
 function loadSetup(): Setup {
@@ -38,13 +41,18 @@ function loadSetup(): Setup {
     if (raw) {
       const s = JSON.parse(raw) as Partial<Setup>;
       if ((s.count === 2 || s.count === 3) && Array.isArray(s.names)) {
-        return { mode: s.mode === 'online' ? 'online' : 'local', count: s.count, names: s.names.map(String).slice(0, 3) };
+        return {
+          mode: s.mode === 'online' ? 'online' : 'local',
+          count: s.count,
+          names: s.names.map(String).slice(0, 3),
+          realistic: s.realistic === true,
+        };
       }
     }
   } catch {
     /* stockage indisponible : valeurs par défaut */
   }
-  return { mode: 'local', count: 2, names: [] };
+  return { mode: 'local', count: 2, names: [], realistic: false };
 }
 
 function saveSetup(s: Setup): void {
@@ -137,8 +145,10 @@ interface Net {
   official: StateMsg | null;
   /** Depuis quand les billes sont arrêtées ici sans état officiel du tireur. */
   stalledSince: number;
-  /** Visée du joueur qui a la main, vue depuis les autres écrans. */
+  /** Visée du joueur qui a la main, vue depuis les autres écrans (lissée à l'affichage). */
   remoteAim: { angle: number; power: number };
+  /** Dernière visée reçue, vers laquelle remoteAim glisse à chaque image. */
+  aimTarget: { angle: number; power: number; seq: number; cue: { x: number; y: number } | null };
   lastAimKey: string;
 }
 let net: Net | null = null;
@@ -213,6 +223,10 @@ function renderSetup(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-count]').forEach((b) => {
     b.setAttribute('aria-pressed', String(Number(b.dataset.count) === setup.count));
   });
+  document.querySelectorAll<HTMLButtonElement>('[data-aim]').forEach((b) => {
+    b.setAttribute('aria-pressed', String((b.dataset.aim === 'real') === setup.realistic));
+  });
+  $('aim-help').textContent = aimLabel(setup.realistic) + (online ? ' Vaut pour toute la salle.' : '');
   p1Label.innerHTML = online ? 'Votre nom' : 'Joueur 1 <small>casse</small>';
   p2Field.hidden = online;
   p3Field.hidden = online || setup.count !== 3;
@@ -221,7 +235,7 @@ function renderSetup(): void {
   const kinds = setup.count === 3 ? ['red', 'yellow', 'blue', 'black'] : ['red', 'yellow', 'black'];
   colours.innerHTML =
     kinds.map((k) => `<span class="chip" data-kind="${k}"></span>`).join('') +
-    `<span>${setup.count === 3 ? '4 billes par couleur' : '7 billes par couleur'} + la noire</span>`;
+    `<span>${ballsPerGroup(setup.count)} billes par couleur + la noire</span>`;
   (['p1', 'p2', 'p3'] as const).forEach((n, i) => {
     const input = nameInput(n);
     if (!input.value && setup.names[i]) input.value = setup.names[i]!;
@@ -242,6 +256,20 @@ document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((b) => {
   b.addEventListener('click', () => {
     setup = { ...setup, mode: b.dataset.mode === 'online' ? 'online' : 'local' };
     showError(null);
+    renderSetup();
+  });
+});
+
+function aimLabel(realistic: boolean): string {
+  return realistic
+    ? 'Seule la direction de la blanche est tracée.'
+    : 'Bille fantôme et trajectoire de la bille visée.';
+}
+
+document.querySelectorAll<HTMLButtonElement>('[data-aim]').forEach((b) => {
+  b.addEventListener('click', () => {
+    setup = { ...setup, realistic: b.dataset.aim === 'real' };
+    saveSetup(setup);
     renderSetup();
   });
 });
@@ -272,7 +300,7 @@ form.addEventListener('submit', (e) => {
     return;
   }
   setBusy(true);
-  createRoom(names[0]!, setup.count)
+  createRoom(names[0]!, setup.count, setup.realistic)
     .then((s) => enterRoom({ ...s, code: normalizeCode(s.code) }))
     .catch((err: Error) => showError(err.message))
     .finally(() => setBusy(false));
@@ -348,8 +376,17 @@ function showGame(m: Match): void {
   resize();
 }
 
+/** Visée réaliste de la partie locale en cours (choisie au menu). */
+let localRealistic = false;
+
 function startLocal(names: string[]): void {
+  localRealistic = setup.realistic;
   showGame(new Match(names));
+}
+
+/** En ligne, la visée est fixée par l'hôte pour toute la salle. */
+function realisticAim(): boolean {
+  return net ? net.room?.realistic === true : localRealistic;
 }
 
 function showEnd(m: Match): void {
@@ -448,6 +485,7 @@ function enterRoom(session: Session): void {
     official: null,
     stalledSince: 0,
     remoteAim: { angle: 0, power: 0 },
+    aimTarget: { angle: 0, power: 0, seq: 0, cue: null },
     lastAimKey: '',
   };
   match = null;
@@ -472,6 +510,9 @@ function renderLobby(): void {
   const { code } = net.online.session;
   const info = net.room;
   $('lobby-code').textContent = code;
+  $('lobby-mode').textContent = info
+    ? `${info.count} joueurs · visée ${info.realistic ? 'réaliste' : 'assistée'} : ${aimLabel(info.realistic).toLowerCase()}`
+    : '';
   $<HTMLInputElement>('lobby-link').value = roomLink(code);
   const count = info?.count ?? 2;
   const seats = $('lobby-seats');
@@ -587,8 +628,10 @@ function onNetMsg(m: Incoming): void {
   }
   if (!match || net.order[match.rules.current] !== m.from || m.from === net.online.seat) return;
   if (m.type === 'aim') {
-    net.remoteAim = { angle: m.angle, power: m.power };
-    if (m.x !== undefined && m.y !== undefined && match.phase === 'placing') match.moveCueInHand({ x: m.x, y: m.y });
+    const seq = m.seq ?? 0;
+    if (seq && seq <= net.aimTarget.seq) return; // aperçu arrivé après un plus récent
+    const cue = m.x !== undefined && m.y !== undefined ? { x: m.x, y: m.y } : null;
+    net.aimTarget = { angle: m.angle, power: m.power, seq, cue };
   } else if (m.type === 'shot') {
     if (stalled(match) && net.official) {
       // le tireur a rechargé sa page pendant le coup précédent et le rejoue
@@ -597,7 +640,9 @@ function onNetMsg(m: Incoming): void {
     }
     if (match.phase !== 'aiming' || m.shots !== match.shots + 1) return;
     const mm = match;
-    net.remoteAim = { angle: m.angle, power: 0 };
+    // la queue frappe exactement dans l'axe du coup
+    net.remoteAim = { angle: m.angle, power: m.power };
+    net.aimTarget = { ...net.aimTarget, angle: m.angle, power: 0, cue: null };
     strikeThen(mm, m.angle, m.power, () => {
       mm.resolveLocally = false;
       if (mm.shoot(m.angle, m.power, m.spin)) sound.strike(m.power);
@@ -634,6 +679,7 @@ function adopt(m: Incoming & StateMsg): void {
   net.game = m.game;
   net.order = m.order;
   net.mine = false;
+  net.aimTarget.cue = null;
   if (newGame) {
     if (endDialog.open) endDialog.close();
     showGame(Match.fromSnapshot(m.snap));
@@ -697,6 +743,25 @@ function shareAim(m: Match): void {
   );
 }
 
+/**
+ * Les aperçus de visée arrivent par à-coups (réseau, envoi toutes les 50 ms) :
+ * la queue et la blanche en main glissent vers la dernière position reçue au lieu d'y sauter.
+ */
+function smoothRemoteAim(m: Match, dt: number): void {
+  if (!net || myTurn() || pendingShot !== null) return;
+  const k = 1 - Math.exp(-dt * 16);
+  const t = net.aimTarget;
+  const a = net.remoteAim;
+  let da = t.angle - a.angle;
+  da = Math.atan2(Math.sin(da), Math.cos(da)); // plus court chemin
+  a.angle += da * k;
+  a.power += (t.power - a.power) * k;
+  if (t.cue && m.phase === 'placing') {
+    const c = m.cue;
+    m.moveCueInHand({ x: c.x + (t.cue.x - c.x) * k, y: c.y + (t.cue.y - c.y) * k });
+  }
+}
+
 // ---------- rendu ----------
 function resize(): void {
   const r = wrap.getBoundingClientRect();
@@ -716,11 +781,13 @@ function frame(now: number): void {
     sound.rolling(m.phase === 'rolling' ? m.world.balls.reduce((v, b) => (b.onTable ? v + Math.hypot(b.vx, b.vy) : v), 0) : 0);
     checkStalled(m, now);
     shareAim(m);
+    smoothRemoteAim(m, dt);
     const aim = net && !myTurn() ? net.remoteAim : { angle: controls.angle, power: controls.power };
     renderer.draw(m, {
       angle: aim.angle,
       power: aim.power,
       placeValid: m.phase === 'placing' && m.canPlaceCue(m.cue),
+      realistic: realisticAim(),
     }, now);
     hud.update(m, hudView());
   }
