@@ -90,8 +90,11 @@ describe('physique', () => {
         assert.ok(t < 40, `durée ${t}`);
         const on = w.balls.filter((b) => b.onTable);
         for (const b of on) {
-          assert.ok(b.x >= BALL_R - 0.01 && b.x <= TABLE_W - BALL_R + 0.01, `x ${b.x}`);
-          assert.ok(b.y >= BALL_R - 0.01 && b.y <= TABLE_H - BALL_R + 0.01, `y ${b.y}`);
+          const inRect =
+            b.x >= BALL_R - 0.01 && b.x <= TABLE_W - BALL_R + 0.01 && b.y >= BALL_R - 0.01 && b.y <= TABLE_H - BALL_R + 0.01;
+          // hors du rectangle, une bille ne peut être qu'arrêtée dans l'entrée d'une poche (entre les mâchoires)
+          const inMouth = POCKETS.some((p) => Math.hypot(b.x - p.c.x, b.y - p.c.y) < p.r + BALL_R * 2);
+          assert.ok(inRect || inMouth, `bille hors de la table (${b.x.toFixed(1)}, ${b.y.toFixed(1)})`);
           for (const o of on) {
             if (o === b) continue;
             assert.ok(Math.hypot(o.x - b.x, o.y - b.y) > BALL_R * 2 - 0.5, 'chevauchement');

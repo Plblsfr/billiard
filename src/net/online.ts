@@ -12,6 +12,8 @@ export interface SeatInfo {
 export interface RoomInfo {
   code: string;
   count: 2 | 3;
+  /** Visée réaliste : seule la direction de la blanche est tracée. */
+  realistic: boolean;
   host: number;
   started: boolean;
   seats: (SeatInfo | null)[];
@@ -46,10 +48,21 @@ export interface AimMsg {
   power: number;
   x?: number;
   y?: number;
+  /** Horodatage d'envoi : les aperçus peuvent arriver dans le désordre, on ignore les plus anciens. */
+  seq?: number;
 }
 
 export type GameMsg = StateMsg | ShotMsg | AimMsg;
 export type Incoming = GameMsg & { from: number; version?: number };
+
+/** Message du chat de la salle. */
+export interface ChatLine {
+  id: number;
+  seat: number;
+  name: string;
+  text: string;
+  at: number;
+}
 
 export interface Session {
   code: string;
@@ -62,6 +75,8 @@ export interface OnlineHandlers {
   msg(m: Incoming): void;
   connection(connected: boolean): void;
   closed(reason: string): void;
+  /** Messages de chat : l'historique à la connexion, puis un par un. */
+  chat(lines: ChatLine[], history: boolean): void;
 }
 
 const API = '/api';
@@ -75,7 +90,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
-const AIM_INTERVAL = 70;
+const AIM_INTERVAL = 50;
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
@@ -98,8 +113,8 @@ export function normalizeCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
-export async function createRoom(name: string, count: 2 | 3): Promise<Session> {
-  return post<Session>('/rooms', { name, count });
+export async function createRoom(name: string, count: 2 | 3, realistic: boolean): Promise<Session> {
+  return post<Session>('/rooms', { name, count, realistic });
 }
 
 export async function joinRoom(code: string, name: string, token?: string): Promise<Session> {
@@ -139,6 +154,8 @@ export class Online {
     });
     src.addEventListener('room', (e) => this.handlers.room(JSON.parse((e as MessageEvent<string>).data) as RoomInfo));
     src.addEventListener('msg', (e) => this.handlers.msg(JSON.parse((e as MessageEvent<string>).data) as Incoming));
+    src.addEventListener('chat', (e) => this.handlers.chat([JSON.parse((e as MessageEvent<string>).data) as ChatLine], false));
+    src.addEventListener('chatlog', (e) => this.handlers.chat(JSON.parse((e as MessageEvent<string>).data) as ChatLine[], true));
     src.addEventListener('closed', (e) => {
       const { reason } = JSON.parse((e as MessageEvent<string>).data) as { reason: string };
       this.fail(reason);
@@ -178,7 +195,7 @@ export class Online {
     return p.then((r) => r.version);
   }
 
-  /** Aperçu de visée : seul le plus récent compte, au plus un toutes les 70 ms. */
+  /** Aperçu de visée : seul le plus récent compte, au plus un toutes les 50 ms. */
   aim(msg: AimMsg): void {
     this.aimPending = msg;
     if (this.aimTimer !== null) return;
@@ -189,10 +206,18 @@ export class Online {
       this.aimPending = null;
       if (!m || this.closed) return;
       this.aimLast = performance.now();
+      // horloge murale : reste croissante même si l'expéditeur recharge sa page
+      m.seq = Math.round(performance.timeOrigin + this.aimLast);
       const { code, token } = this.session;
       // hors file : un aperçu perdu ou refusé n'a pas d'importance
       post(`/rooms/${code}/send`, { token, msg: m }).catch(() => undefined);
     }, wait);
+  }
+
+  /** Envoie un message dans le chat (il revient par le flux, comme pour les autres). */
+  async say(text: string): Promise<void> {
+    const { code, token } = this.session;
+    await post(`/rooms/${code}/chat`, { token, text });
   }
 
   async leave(): Promise<void> {

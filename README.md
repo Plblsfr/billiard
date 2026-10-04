@@ -5,20 +5,23 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
 
 - Physique 2D maison : chocs entre billes, bandes, mâchoires et poches, coulé / rétro.
 - Règles du pub anglais : table ouverte après la casse, deux coups après une faute, bille en main derrière la ligne de baulk.
-- Ligne de visée avec bille fantôme et direction de la bille visée (rose si la bille est interdite).
+- Visée assistée (bille fantôme, direction de la bille visée, rose si elle est interdite) ou **réaliste**
+  (seulement la direction de la blanche) ; en ligne, l'hôte choisit pour toute la salle.
 - Animations : la queue part frapper la blanche, les billes glissent et s'enfoncent dans les poches (onde de leur couleur),
   la blanche à pois rouges roule visiblement.
 - Sons synthétisés (aucun fichier) : chocs, bandes, coup de queue, chute puis roulement dans la gouttière, roulement sur le drap,
   signaux de faute, de changement de main et de victoire.
 - Table tournée automatiquement en portrait sur téléphone.
 - Jeu en ligne : une salle, un lien à partager, chacun joue depuis son appareil et voit la visée des autres.
+- Chat de salle en ligne (dès la salle d'attente, phrases rapides, messages non lus, historique gardé pour les reconnexions).
+- Replay : « Revoir le coup » rejoue le dernier coup, « Revoir la partie » toute la partie (pause, coup précédent / suivant, ×2).
 - Aucune dépendance d'exécution : TypeScript compilé en modules ES, servi par nginx ; petit serveur de salons en Node pur.
 
 ## Règles retenues
 
 | | 2 joueurs | 3 joueurs |
 |---|---|---|
-| Billes | 7 rouges, 7 jaunes, la noire | 4 rouges, 4 jaunes, 4 bleues, la noire |
+| Billes | 7 rouges, 7 jaunes, la noire | 6 rouges, 6 jaunes, 6 bleues, la noire |
 | Attribution | la 1re bille rentrée sans faute après la casse donne sa couleur ; l'autre joueur reçoit l'autre | idem ; la dernière couleur revient automatiquement au dernier joueur sans couleur |
 | Noire trop tôt ou avec faute | défaite | le joueur est éliminé, ses billes quittent la table, la noire est replacée |
 
@@ -38,6 +41,7 @@ s'affichent, à envoyer aux autres joueurs. La partie démarre quand toutes les 
 - Le serveur (`server/relay.mjs`) ne connaît pas les règles : il tient les places, relaie les messages (flux SSE + POST) et refuse
   qu'un joueur joue hors de son tour. Il garde en mémoire le dernier état de chaque salle.
 - Un joueur qui recharge la page ou perd la connexion reprend sa place en rouvrant le lien (jeton gardé dans le navigateur).
+- Chat : 200 caractères par message, 5 messages par tranche de 5 s et par joueur, 50 derniers messages gardés par salle.
 - Revanche lancée par l'hôte, la casse passe au joueur suivant. Les salles inactives depuis 2 h sont supprimées.
 - Les salles vivent en mémoire : redémarrer le relais ferme les parties en cours.
 

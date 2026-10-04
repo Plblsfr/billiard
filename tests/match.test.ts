@@ -103,3 +103,17 @@ describe('instantanés (jeu en ligne)', () => {
     assert.deepEqual(viewer.snapshot(), shooter.snapshot());
   });
 });
+
+describe('triangle à trois joueurs', () => {
+  it('6 billes par couleur et la noire, sans chevauchement', () => {
+    const m = new Match(['Anna', 'Bob', 'Chloé'], seeded(5));
+    const balls = m.world.balls.filter((b) => b.kind !== 'cue');
+    assert.equal(balls.length, 19);
+    for (const g of ['red', 'yellow', 'blue'] as const) {
+      assert.equal(balls.filter((b) => b.kind === g).length, 6, g);
+      assert.equal(m.rules.onTable[g], 6);
+    }
+    assert.equal(balls.filter((b) => b.kind === 'black').length, 1);
+    for (const a of balls) for (const b of balls) if (a !== b) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= BALL_R * 2);
+  });
+});

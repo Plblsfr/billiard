@@ -4,10 +4,11 @@
 // entre navigateurs et garde le dernier état de la partie pour les reconnexions.
 // Le navigateur du joueur qui tire calcule le coup et envoie l'état qui en résulte.
 //
-//   POST /api/rooms                  {name, count}          → {code, seat, token}
+//   POST /api/rooms                  {name, count, realistic} → {code, seat, token}
 //   POST /api/rooms/:code/join       {name, token?}         → {seat, token}
 //   GET  /api/rooms/:code/events?token=…                    → flux SSE (hello, room, msg, closed)
 //   POST /api/rooms/:code/send       {token, msg}           → {version?}
+//   POST /api/rooms/:code/chat       {token, text}          → {}   (flux : événement « chat »)
 //   POST /api/rooms/:code/leave      {token}                → {}
 //   GET  /api/healthz
 import { randomInt, randomUUID } from 'node:crypto';
@@ -16,6 +17,12 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 5;
 const MAX_BODY = 64 * 1024;
 const NAME_MAX = 16;
+const CHAT_MAX = 200;
+/** Messages de chat gardés par salle (renvoyés à la connexion). */
+const CHAT_KEEP = 50;
+/** Au plus 5 messages par tranche de 5 secondes et par joueur. */
+const CHAT_BURST = 5;
+const CHAT_WINDOW_MS = 5000;
 
 /** Messages relayés ; seul « state » est conservé. */
 const RELAYED = new Set(['state', 'shot', 'aim']);
@@ -105,6 +112,7 @@ export function createRelay(opts = {}) {
     return {
       code: room.code,
       count: room.count,
+      realistic: room.realistic,
       host: 0,
       started: room.state !== null,
       seats: room.seats.map((s) => (s ? { name: s.name, online: s.clients.size > 0 } : null)),
@@ -132,8 +140,9 @@ export function createRelay(opts = {}) {
     const code = newCode();
     const token = randomUUID();
     const seats = Array(count).fill(null);
-    seats[0] = { name: cleanName(body.name, 'Joueur 1'), token, clients: new Set() };
-    rooms.set(code, { code, count, seats, state: null, version: 0, turn: 0, over: false, touched: now() });
+    seats[0] = { name: cleanName(body.name, 'Joueur 1'), token, clients: new Set(), chatTimes: [] };
+    const realistic = body.realistic === true;
+    rooms.set(code, { code, count, realistic, seats, state: null, version: 0, turn: 0, over: false, chat: [], chatId: 0, touched: now() });
     json(res, 201, { code, seat: 0, token });
   }
 
@@ -150,7 +159,7 @@ export function createRelay(opts = {}) {
     const free = room.seats.findIndex((s) => s === null);
     if (free < 0 || room.state !== null) throw new HttpError(409, 'Salle complète');
     const token = randomUUID();
-    room.seats[free] = { name: cleanName(body.name, `Joueur ${free + 1}`), token, clients: new Set() };
+    room.seats[free] = { name: cleanName(body.name, `Joueur ${free + 1}`), token, clients: new Set(), chatTimes: [] };
     broadcast(room, 'room', roomInfo(room));
     json(res, 200, { seat: free, token });
   }
@@ -169,6 +178,7 @@ export function createRelay(opts = {}) {
     s.clients.add(res);
     sse(res, 'hello', { seat });
     broadcast(room, 'room', roomInfo(room));
+    if (room.chat.length) sse(res, 'chatlog', room.chat);
     if (room.state) sse(res, 'msg', room.state);
     req.on('close', () => {
       s.clients.delete(res);
@@ -202,6 +212,25 @@ export function createRelay(opts = {}) {
 
     if (room.state === null || room.over || seat !== room.turn) throw new HttpError(409, "Ce n'est pas votre tour");
     broadcast(room, 'msg', { ...msg, from: seat }, seat);
+    json(res, 200, {});
+  }
+
+  async function chat(req, res, code) {
+    const body = await readJson(req);
+    const room = getRoom(code);
+    const seat = seatOf(room, body.token);
+    const text = typeof body.text === 'string' ? body.text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, CHAT_MAX) : '';
+    if (!text) throw new HttpError(400, 'Message vide');
+    const s = room.seats[seat];
+    const t = now();
+    s.chatTimes = s.chatTimes.filter((x) => t - x < CHAT_WINDOW_MS);
+    if (s.chatTimes.length >= CHAT_BURST) throw new HttpError(429, 'Doucement, trop de messages');
+    s.chatTimes.push(t);
+    const line = { id: ++room.chatId, seat, name: s.name, text, at: t };
+    room.chat.push(line);
+    if (room.chat.length > CHAT_KEEP) room.chat.shift();
+    // l'expéditeur le reçoit aussi : tout le monde voit les messages dans le même ordre
+    broadcast(room, 'chat', line);
     json(res, 200, {});
   }
 
@@ -264,6 +293,7 @@ export function createRelay(opts = {}) {
       if (method !== 'POST') throw new HttpError(405, 'Méthode non autorisée');
       if (action === 'join') return join(req, res, code);
       if (action === 'send') return send(req, res, code);
+      if (action === 'chat') return chat(req, res, code);
       if (action === 'leave') return leave(req, res, code);
       throw new HttpError(404, 'Introuvable');
     };

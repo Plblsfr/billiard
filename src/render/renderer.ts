@@ -28,6 +28,8 @@ export interface AimState {
   power: number;
   /** La blanche peut-elle être posée à sa position actuelle ? */
   placeValid: boolean;
+  /** Visée réaliste : seulement la direction de la blanche, sans bille fantôme ni trajectoires. */
+  realistic?: boolean;
 }
 
 /** Bille en train de tomber dans une poche. */
@@ -191,7 +193,7 @@ export class Renderer {
     if (m.phase === 'placing') this.drawPlacementRing(m.cue, aim.placeValid);
     if (this.strike) this.drawStrike(now);
     else if (m.phase === 'aiming') {
-      this.drawAim(m, aim.angle);
+      this.drawAim(m, aim.angle, aim.realistic === true);
       this.drawCueStick(m.cue, aim.angle, BALL_R + 10 + aim.power * 200);
     }
   }
@@ -461,11 +463,26 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawAim(m: Match, angle: number): void {
+  private drawAim(m: Match, angle: number, realistic: boolean): void {
     const ctx = this.ctx;
     const cue = m.cue;
     const t = traceAim(m.world.balls, cue, angle);
     const legal = legalTargets(m.rules, m.rules.current);
+
+    if (realistic) {
+      // seulement la direction de la blanche, jusqu'à la première bille ou la bande
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([14, 12]);
+      ctx.beginPath();
+      ctx.moveTo(cue.x + Math.cos(angle) * BALL_R, cue.y + Math.sin(angle) * BALL_R);
+      ctx.lineTo(t.ghost.x, t.ghost.y);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
 
     ctx.save();
     ctx.lineCap = 'round';
