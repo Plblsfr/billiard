@@ -1,0 +1,97 @@
+name: Release
+
+# Pousser un tag vX.Y.Z publie :
+#  - l'image Docker multi-architecture sur ghcr.io/<owner>/billard-anglais
+#  - une release GitHub avec le jeu en archive zip (site statique jouable hors ligne avec un petit serveur)
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  web:
+    name: Archive du jeu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+      - name: Zip
+        run: cd dist && zip -r "../billard-anglais-${GITHUB_REF_NAME}-web.zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: billard-anglais-*-web.zip
+
+  image:
+    name: Image Docker
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nom de l'image (minuscules)
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/billard-anglais" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=billard-anglais
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: APP_VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Release GitHub
+    runs-on: ubuntu-latest
+    needs: [web, image]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: billard-anglais-*-web.zip
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ```bash
+            docker pull ${{ needs.image.outputs.image }}:${{ needs.image.outputs.version }}
+            ```
+
+            Ou avec Traefik : renseigner `TAG=${{ needs.image.outputs.version }}` dans `.env` puis `docker compose pull && docker compose up -d`.
+
+            L'archive `billard-anglais-${{ github.ref_name }}-web.zip` contient le site statique, à servir avec n'importe quel serveur web.

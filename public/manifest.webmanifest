@@ -1,0 +1,11 @@
+{
+  "name": "Billard anglais",
+  "short_name": "Billard",
+  "lang": "fr",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#faf6f3",
+  "theme_color": "#faf6f3",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

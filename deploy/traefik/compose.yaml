@@ -1,0 +1,37 @@
+# Exemple de Traefik minimal, seulement si vous n'en avez pas déjà un.
+#   docker network create traefik
+#   ACME_EMAIL=vous@exemple.fr docker compose -f deploy/traefik/compose.yaml up -d
+name: traefik
+
+services:
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?définir ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - traefik
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  letsencrypt:
+
+networks:
+  traefik:
+    external: true

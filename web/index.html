@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Billard anglais</title>
+    <meta name="description" content="Billard anglais (blackball) à 2 ou 3 joueurs, sur le même écran." />
+    <meta name="theme-color" content="#faf6f3" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..600&display=swap"
+    />
+    <link rel="stylesheet" href="%ASSETS%/styles.css" />
+    <script type="module" src="%ASSETS%/js/main.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <h1 class="brand">Billard <span class="hl">anglais</span></h1>
+        <nav class="actions" aria-label="Partie">
+          <button type="button" class="btn btn-discret" id="btn-rules">Règles</button>
+          <button type="button" class="btn btn-discret" id="btn-sound" aria-pressed="false">Son : activé</button>
+          <button type="button" class="btn btn-contour" id="btn-new" hidden>Nouvelle partie</button>
+        </nav>
+      </header>
+
+      <main>
+        <section id="menu" class="menu" aria-labelledby="menu-title">
+          <div class="menu-card">
+            <h2 id="menu-title">Nouvelle <span class="hl">partie</span></h2>
+            <p class="lead">
+              Règles du billard anglais, deux coups après une faute. À trois joueurs, une troisième couleur entre en
+              jeu : les bleues.
+            </p>
+            <form id="setup" novalidate>
+              <fieldset class="field">
+                <legend>Joueurs</legend>
+                <div class="segmented" role="group" aria-label="Nombre de joueurs">
+                  <button type="button" data-count="2" aria-pressed="true">2 joueurs</button>
+                  <button type="button" data-count="3" aria-pressed="false">3 joueurs</button>
+                </div>
+              </fieldset>
+              <div class="names">
+                <label class="field">
+                  <span>Joueur 1 <small>casse</small></span>
+                  <input name="p1" autocomplete="off" maxlength="16" placeholder="Joueur 1" />
+                </label>
+                <label class="field">
+                  <span>Joueur 2</span>
+                  <input name="p2" autocomplete="off" maxlength="16" placeholder="Joueur 2" />
+                </label>
+                <label class="field" id="p3-field" hidden>
+                  <span>Joueur 3</span>
+                  <input name="p3" autocomplete="off" maxlength="16" placeholder="Joueur 3" />
+                </label>
+              </div>
+              <div class="colours" id="colours" aria-hidden="true"></div>
+              <button type="submit" class="btn btn-plein btn-large">Jouer</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="game" class="game" hidden aria-label="Table de billard">
+          <ol class="players" id="players"></ol>
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+          <div class="stage">
+            <div class="table-wrap" id="table-wrap">
+              <canvas id="table" aria-label="Table de billard" role="img"></canvas>
+            </div>
+            <aside class="controls" aria-label="Commandes de tir">
+              <div class="fine" role="group" aria-label="Visée fine">
+                <button type="button" class="icon-btn" id="fine-left" aria-label="Tourner la visée à gauche">↺</button>
+                <button type="button" class="icon-btn" id="fine-right" aria-label="Tourner la visée à droite">↻</button>
+              </div>
+              <div
+                class="spin"
+                id="spin"
+                tabindex="0"
+                role="slider"
+                aria-label="Effet : haut pour coulé, bas pour rétro"
+                aria-valuemin="-100"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="spin-dot" id="spin-dot"></span>
+              </div>
+              <span class="control-label">Effet</span>
+              <div
+                class="power"
+                id="power"
+                tabindex="0"
+                role="slider"
+                aria-label="Puissance : tirez vers le bas puis relâchez pour jouer"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="power-fill" id="power-fill"></span>
+                <span class="power-grip" id="power-grip"></span>
+              </div>
+              <span class="control-label">Puissance</span>
+            </aside>
+          </div>
+          <p class="hint" id="hint"></p>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="rules-dialog" class="modal" aria-labelledby="rules-title">
+      <h2 id="rules-title">Les <span class="hl">règles</span></h2>
+      <div class="rules-body">
+        <h3>But du jeu</h3>
+        <p>
+          Empocher toutes les billes de sa couleur, puis la noire. Le premier qui rentre la noire proprement gagne.
+        </p>
+        <h3>Couleurs</h3>
+        <p>
+          La table est ouverte après la casse : la première bille rentrée sans faute donne sa couleur au joueur.
+          À deux, l’adversaire reçoit l’autre couleur. À trois, la dernière couleur revient automatiquement au
+          dernier joueur sans couleur.
+        </p>
+        <h3>Fautes</h3>
+        <ul>
+          <li>la blanche tombe dans une poche (bille en main derrière la ligne de baulk) ;</li>
+          <li>la blanche ne touche aucune bille ;</li>
+          <li>la première bille touchée n’est pas de sa couleur (ou n’est pas la noire quand on la joue) ;</li>
+          <li>empocher une bille d’un autre joueur.</li>
+        </ul>
+        <p>Après une faute, le joueur suivant a <strong>deux coups</strong>. Rentrer une bille ne consomme pas de coup.</p>
+        <h3>La noire</h3>
+        <p>
+          Rentrer la noire avant d’avoir vidé sa couleur, ou en commettant une faute, fait perdre. À trois joueurs,
+          le fautif est éliminé : ses billes quittent la table, la noire est replacée et la partie continue.
+          Une noire rentrée à la casse est simplement replacée.
+        </p>
+        <h3>Commandes</h3>
+        <ul>
+          <li>glisser sur la table pour viser, molette ou ↺ ↻ pour affiner ;</li>
+          <li>tirer la jauge de puissance vers le bas puis relâcher pour jouer ;</li>
+          <li>la bille d’effet règle le coulé (haut) et le rétro (bas) ;</li>
+          <li>clavier : ← → viser (Maj : plus fin), ↑ ↓ puissance, Espace pour tirer.</li>
+        </ul>
+      </div>
+      <form method="dialog" class="modal-actions">
+        <button class="btn btn-plein" value="close">Compris</button>
+      </form>
+    </dialog>
+
+    <dialog id="end-dialog" class="modal" aria-labelledby="end-title">
+      <h2 id="end-title"></h2>
+      <p id="end-detail" class="lead"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-contour" id="end-menu">Menu</button>
+        <button type="button" class="btn btn-plein" id="end-again">Revanche</button>
+      </div>
+    </dialog>
+
+    <dialog id="confirm-dialog" class="modal" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Abandonner la <span class="hl">partie</span> ?</h2>
+      <p class="lead">La partie en cours sera perdue.</p>
+      <form method="dialog" class="modal-actions">
+        <button class="btn btn-contour" value="cancel">Continuer</button>
+        <button class="btn btn-plein" value="ok">Nouvelle partie</button>
+      </form>
+    </dialog>
+
+    <noscript>Ce jeu a besoin de JavaScript.</noscript>
+  </body>
+</html>

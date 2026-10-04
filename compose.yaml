@@ -1,0 +1,42 @@
+# Déploiement derrière un Traefik existant (réseau Docker externe).
+#   cp .env.example .env   puis   docker compose up -d
+name: billard
+
+services:
+  billard:
+    image: ${IMAGE:-ghcr.io/owner/billard-anglais}:${TAG:-latest}
+    build:
+      context: .
+      args:
+        APP_VERSION: ${TAG:-dev}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 64M
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.billard.rule=Host(`${DOMAIN:?définir DOMAIN dans .env}`)
+      - traefik.http.routers.billard.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.billard.tls=true
+      - traefik.http.routers.billard.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.routers.billard.middlewares=billard-hsts
+      - traefik.http.middlewares.billard-hsts.headers.stsSeconds=31536000
+      - traefik.http.middlewares.billard-hsts.headers.stsIncludeSubdomains=true
+      - traefik.http.services.billard.loadbalancer.server.port=8080
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
