@@ -22,6 +22,7 @@
       <header class="topbar">
         <h1 class="brand">Billard <span class="hl">anglais</span></h1>
         <nav class="actions" aria-label="Partie">
+          <button type="button" class="btn btn-discret" id="btn-3d" hidden aria-pressed="false">Vue 3D</button>
           <button type="button" class="btn btn-discret" id="btn-replay" hidden>Revoir le coup</button>
           <button type="button" class="btn btn-discret chat-toggle" id="btn-chat" hidden aria-expanded="false" aria-controls="chat">
             Chat <span class="unread" id="chat-unread" hidden></span>
@@ -122,6 +123,13 @@
           <div class="stage">
             <div class="table-wrap" id="table-wrap">
               <canvas id="table" aria-label="Table de billard" role="img"></canvas>
+              <canvas id="table3d" aria-label="Table de billard en 3D" role="img" hidden></canvas>
+              <div class="view3d-bar" id="view3d-bar" role="group" aria-label="Caméra 3D" hidden>
+                <button type="button" data-cam="free" aria-pressed="true">Libre</button>
+                <button type="button" data-cam="behind" aria-pressed="false">Derrière<span class="cam-long"> la blanche</span></button>
+                <button type="button" data-cam="top" aria-pressed="false">Dessus</button>
+                <button type="button" id="cam-reset" aria-label="Recentrer la vue">⟲</button>
+              </div>
               <div class="replay-bar" id="replay-bar" role="group" aria-label="Replay" hidden>
                 <span class="replay-tag">Replay</span>
                 <span class="replay-label" id="replay-label" aria-live="polite"></span>
@@ -213,6 +221,8 @@
           <li>la bille d’effet règle le coulé (haut) et le rétro (bas) ;</li>
           <li>clavier : ← → viser (Maj : plus fin), ↑ ↓ puissance, Espace pour tirer ;</li>
           <li>visée réaliste (au menu) : seule la direction de la blanche est tracée, sans bille fantôme ni trajectoires ;</li>
+          <li>« Vue 3D » : clic droit, deux doigts ou glisser quand on ne vise pas pour tourner autour de la table, molette ou
+            pincer pour zoomer ; « Derrière la blanche » place la caméra dans l’axe du tir : glisser tourne la visée ;</li>
           <li>« Revoir le coup » rejoue le dernier coup, « Revoir la partie » (en fin de partie) rejoue tous les coups :
             Espace pour la pause, ← → coup précédent / suivant, Échap pour revenir au jeu.</li>
         </ul>

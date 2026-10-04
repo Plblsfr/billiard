@@ -13,6 +13,8 @@ import {
   type StateMsg,
 } from './net/online.js';
 import { Renderer } from './render/renderer.js';
+import type { CameraMode, Renderer3D } from './render/renderer3d.js';
+import type { TableRenderer } from './render/types.js';
 import { Sound } from './ui/audio.js';
 import { Chat } from './ui/chat.js';
 import { Controls } from './ui/controls.js';
@@ -120,7 +122,11 @@ const confirmDialog = $<HTMLDialogElement>('confirm-dialog');
 const canvas = $<HTMLCanvasElement>('table');
 const wrap = $('table-wrap');
 
-const renderer = new Renderer(canvas);
+const canvas3d = $<HTMLCanvasElement>('table3d');
+const renderer2d = new Renderer(canvas);
+/** Rendu actif : 2D par défaut, 3D (chargée à la demande) au choix du joueur. */
+let renderer: TableRenderer = renderer2d;
+let renderer3d: Renderer3D | null = null;
 const sound = new Sound();
 const hud = new Hud($('players'), $('status'), $('hint'), $('power'), $('spin'));
 
@@ -213,7 +219,7 @@ const controls = new Controls(
     gesture: () => sound.unlock(),
   },
   {
-    canvas,
+    canvases: [canvas, canvas3d],
     power: $('power'),
     powerFill: $('power-fill'),
     powerGrip: $('power-grip'),
@@ -352,6 +358,7 @@ joinCode.addEventListener('input', () => {
 function showMenu(): void {
   exitReplay(false);
   match = null;
+  btn3d.hidden = true;
   sound.rolling(0);
   game.hidden = true;
   lobby.hidden = true;
@@ -390,6 +397,7 @@ function showGame(m: Match): void {
   lobby.hidden = true;
   game.hidden = false;
   btnNew.hidden = false;
+  btn3d.hidden = false;
   btnNew.textContent = net ? 'Quitter la salle' : 'Nouvelle partie';
   resize();
 }
@@ -906,10 +914,85 @@ const chat = new Chat(
   },
 );
 
+// ---------- vue 3D ----------
+const VIEW3D_KEY = 'billard-anglais:3d';
+const btn3d = $<HTMLButtonElement>('btn-3d');
+const bar3d = $('view3d-bar');
+let loading3d = false;
+
+/** Angle de visée affiché : le sien, celui du joueur qui a la main, ou celui du coup rejoué. */
+function shownAimAngle(): number {
+  if (replay) return replay.aim.angle;
+  return net && !myTurn() ? net.remoteAim.angle : controls.angle;
+}
+
+const myAiming = (): boolean =>
+  match !== null && myTurn() && !replay && pendingShot === null && document.querySelector('dialog[open]') === null;
+
+async function set3D(on: boolean): Promise<void> {
+  if (on && !renderer3d) {
+    if (loading3d) return;
+    loading3d = true;
+    btn3d.disabled = true;
+    try {
+      const mod = await import('./render/renderer3d.js');
+      renderer3d = new mod.Renderer3D(canvas3d, wrap, {
+        aimAngle: shownAimAngle,
+        canRotateAim: () => myAiming() && match!.phase === 'aiming',
+        rotateAim: (d) => {
+          controls.angle += d;
+        },
+        wantsPointer: () => myAiming() && (match!.phase === 'aiming' || match!.phase === 'placing'),
+        cancelGamePointer: () => controls.cancelPointer(),
+        modeChanged: renderCameraBar,
+      });
+    } catch (err) {
+      console.error(err);
+      hint.textContent = 'La vue 3D n’est pas disponible sur cet appareil (WebGL).';
+      on = false;
+    } finally {
+      loading3d = false;
+      btn3d.disabled = false;
+    }
+  }
+  const use3d = on && renderer3d !== null;
+  renderer = use3d ? renderer3d! : renderer2d;
+  canvas.hidden = use3d;
+  canvas3d.hidden = !use3d;
+  bar3d.hidden = !use3d;
+  btn3d.setAttribute('aria-pressed', String(use3d));
+  btn3d.textContent = use3d ? 'Vue 2D' : 'Vue 3D';
+  renderer.reset();
+  hud.threeD = use3d;
+  hud.invalidate();
+  resize();
+  try {
+    localStorage.setItem(VIEW3D_KEY, use3d ? '1' : '0');
+  } catch {
+    /* ignoré */
+  }
+}
+
+function renderCameraBar(mode: CameraMode): void {
+  bar3d.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.cam === mode));
+  });
+}
+
+btn3d.addEventListener('click', () => void set3D(renderer === renderer2d));
+bar3d.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (renderer3d) renderer3d.mode = b.dataset.cam as CameraMode;
+  });
+});
+$('cam-reset').addEventListener('click', () => renderer3d?.resetView());
+
 // ---------- rendu ----------
 function resize(): void {
   const r = wrap.getBoundingClientRect();
-  if (r.width > 0 && r.height > 0) renderer.resize(r.width, r.height);
+  if (r.width <= 0 || r.height <= 0) return;
+  renderer2d.resize(r.width, r.height);
+  renderer3d?.resize(r.width, r.height);
 }
 new ResizeObserver(resize).observe(wrap);
 
@@ -952,6 +1035,11 @@ requestAnimationFrame(frame);
 
 // ---------- démarrage ----------
 showMenu();
+try {
+  if (localStorage.getItem(VIEW3D_KEY) === '1') void set3D(true);
+} catch {
+  /* stockage indisponible */
+}
 const linkCode = hashRoom();
 if (linkCode) {
   setup = { ...setup, mode: 'online' };

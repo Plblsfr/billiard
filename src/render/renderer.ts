@@ -4,6 +4,7 @@ import { traceAim, type PhysicsEvent } from '../game/physics.js';
 import { legalTargets } from '../game/rules.js';
 import { POCKETS, POCKET_THROATS, type Vec } from '../game/table.js';
 import type { Ball, BallKind } from '../game/types.js';
+import { cueGap, strikeLead, strikePose, type AimState, type TableRenderer } from './types.js';
 import { FRAME, View } from './view.js';
 
 export const BALL_COLORS: Record<BallKind, { base: string; dark: string }> = {
@@ -22,15 +23,7 @@ const ROSE = '#f4c7d5';
 const ROSE_DARK = '#c8607f';
 const CREME = '#faf6f3';
 
-export interface AimState {
-  angle: number;
-  /** Puissance armée (0 à 1) : recul de la queue. */
-  power: number;
-  /** La blanche peut-elle être posée à sa position actuelle ? */
-  placeValid: boolean;
-  /** Visée réaliste : seulement la direction de la blanche, sans bille fantôme ni trajectoires. */
-  realistic?: boolean;
-}
+export type { AimState } from './types.js';
 
 /** Bille en train de tomber dans une poche. */
 interface Fall {
@@ -68,8 +61,6 @@ interface Spin3 {
 
 const FALL_MS = 420;
 const RIPPLE_MS = 560;
-/** Accompagnement de la queue après le contact (ms). */
-const FOLLOW_MS = 320;
 /** Pois rouges de la blanche (axes d'un octaèdre). */
 const CUE_SPOTS: readonly [number, number, number][] = [
   [1, 0, 0],
@@ -83,7 +74,7 @@ const CUE_SPOTS: readonly [number, number, number][] = [
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const clamp01 = (t: number): number => Math.min(1, Math.max(0, t));
 
-export class Renderer {
+export class Renderer implements TableRenderer {
   readonly view = new View();
   private ctx: CanvasRenderingContext2D;
   private dpr = 1;
@@ -153,8 +144,8 @@ export class Renderer {
    * c'est à ce moment qu'il faut lancer Match.shoot.
    */
   shot(cue: Vec, angle: number, power: number, now = performance.now()): number {
-    const lead = Math.round(110 - 60 * Math.min(1, Math.max(0, power)));
-    this.strike = { from: { x: cue.x, y: cue.y }, angle, gap: BALL_R + 10 + power * 200, t0: now, lead };
+    const lead = strikeLead(power);
+    this.strike = { from: { x: cue.x, y: cue.y }, angle, gap: cueGap(power), t0: now, lead };
     return lead;
   }
 
@@ -194,7 +185,7 @@ export class Renderer {
     if (this.strike) this.drawStrike(now);
     else if (m.phase === 'aiming') {
       this.drawAim(m, aim.angle, aim.realistic === true);
-      this.drawCueStick(m.cue, aim.angle, BALL_R + 10 + aim.power * 200);
+      this.drawCueStick(m.cue, aim.angle, cueGap(aim.power));
     }
   }
 
@@ -255,22 +246,12 @@ export class Renderer {
   private drawStrike(now: number): void {
     const s = this.strike;
     if (!s) return;
-    const ms = Math.max(0, now - s.t0);
-    if (ms >= s.lead + FOLLOW_MS) {
+    const pose = strikePose(now - s.t0, s.gap, s.lead);
+    if (!pose) {
       this.strike = null;
       return;
     }
-    // poussée qui accélère jusqu'à la blanche, accompagnement, puis la queue s'efface
-    const contact = BALL_R + 1;
-    let gap: number;
-    let alpha = 1;
-    if (ms < s.lead) gap = s.gap + (contact - s.gap) * Math.pow(ms / s.lead, 2);
-    else {
-      const t = (ms - s.lead) / FOLLOW_MS;
-      gap = contact - 46 * easeOutCubic(t);
-      alpha = 1 - clamp01((t - 0.3) / 0.7);
-    }
-    this.drawCueStick(s.from, s.angle, gap, alpha);
+    this.drawCueStick(s.from, s.angle, pose.gap, pose.alpha);
   }
 
   /** Fait tourner chaque bille d'après son déplacement (roulement sans glissement). */

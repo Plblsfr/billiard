@@ -17,6 +17,8 @@ export interface HudView {
 
 export class Hud {
   private lastKey = '';
+  /** Vue 3D active : les consignes de visée changent. */
+  threeD = false;
 
   constructor(
     private players: HTMLElement,
@@ -29,7 +31,7 @@ export class Hud {
   /** Redessine le bandeau si l'état a changé (appelé à chaque image). */
   update(m: Match, view: HudView | null = null): void {
     const r = m.rules;
-    const key = JSON.stringify([m.phase, r, m.shots, view]);
+    const key = JSON.stringify([m.phase, r, m.shots, view, this.threeD]);
     if (key === this.lastKey) return;
     this.lastKey = key;
 
@@ -74,7 +76,9 @@ export class Hud {
 
     const hints: Record<Match['phase'], string> = {
       placing: 'Bille en main : déplacez la blanche dans la zone de baulk puis cliquez ou relâchez pour la poser.',
-      aiming: 'Glissez sur la table pour viser · tirez la jauge vers le bas puis relâchez pour jouer · ← → ↑ ↓ Espace au clavier.',
+      aiming: this.threeD
+        ? '3D : glissez sur la table pour viser (ou « Derrière la blanche ») · clic droit ou deux doigts pour tourner · molette ou pincer pour zoomer.'
+        : 'Glissez sur la table pour viser · tirez la jauge vers le bas puis relâchez pour jouer · ← → ↑ ↓ Espace au clavier.',
       rolling: ' ',
       over: 'Partie terminée.',
     };
