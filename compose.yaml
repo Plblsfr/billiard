@@ -36,6 +36,38 @@ services:
       - traefik.http.middlewares.billard-hsts.headers.stsIncludeSubdomains=true
       - traefik.http.services.billard.loadbalancer.server.port=8080
 
+  # Serveur de salons du jeu en ligne, servi sur le même domaine sous /api/.
+  # Les salles vivent en mémoire : un redémarrage ferme les parties en cours.
+  relay:
+    image: ${IMAGE:-ghcr.io/owner/billard-anglais}-relay:${TAG:-latest}
+    build:
+      context: .
+      target: relay
+      args:
+        APP_VERSION: ${TAG:-dev}
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+      - traefik.http.routers.billard-relay.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/`)
+      - traefik.http.routers.billard-relay.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.billard-relay.tls=true
+      - traefik.http.routers.billard-relay.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.routers.billard-relay.middlewares=billard-hsts
+      - traefik.http.services.billard-relay.loadbalancer.server.port=8081
+
 networks:
   traefik:
     external: true

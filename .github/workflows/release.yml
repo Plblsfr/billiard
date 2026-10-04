@@ -1,7 +1,8 @@
 name: Release
 
 # Pousser un tag vX.Y.Z publie :
-#  - l'image Docker multi-architecture sur ghcr.io/<owner>/billard-anglais
+#  - les images Docker multi-architecture ghcr.io/<owner>/billard-anglais (site)
+#    et ghcr.io/<owner>/billard-anglais-relay (serveur des parties en ligne)
 #  - une release GitHub avec le jeu en archive zip (site statique jouable hors ligne avec un petit serveur)
 on:
   push:
@@ -34,8 +35,15 @@ jobs:
           path: billard-anglais-*-web.zip
 
   image:
-    name: Image Docker
+    name: Image Docker (${{ matrix.suffix || 'site' }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - suffix: ''
+            target: ''
+          - suffix: '-relay'
+            target: relay
     outputs:
       image: ${{ steps.name.outputs.image }}
       version: ${{ steps.meta.outputs.version }}
@@ -54,24 +62,25 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.name.outputs.image }}
+          images: ${{ steps.name.outputs.image }}${{ matrix.suffix }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest
           labels: |
-            org.opencontainers.image.title=billard-anglais
+            org.opencontainers.image.title=billard-anglais${{ matrix.suffix }}
       - uses: docker/build-push-action@v6
         with:
           context: .
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: APP_VERSION=${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=image${{ matrix.suffix }}
 
   release:
     name: Release GitHub
@@ -90,6 +99,7 @@ jobs:
 
             ```bash
             docker pull ${{ needs.image.outputs.image }}:${{ needs.image.outputs.version }}
+            docker pull ${{ needs.image.outputs.image }}-relay:${{ needs.image.outputs.version }}   # parties en ligne
             ```
 
             Ou avec Traefik : renseigner `TAG=${{ needs.image.outputs.version }}` dans `.env` puis `docker compose pull && docker compose up -d`.

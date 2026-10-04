@@ -1,8 +1,10 @@
 // Petit serveur statique pour le développement et la prévisualisation (pas pour la production).
+// Il héberge aussi le relais de salons sous /api pour tester le jeu en ligne en local.
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRelay } from '../server/relay.mjs';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -17,7 +19,9 @@ const TYPES = {
 
 export function serve(dir, port) {
   const base = resolve(dir);
+  const relay = createRelay();
   const server = createServer((req, res) => {
+    if (relay.handle(req, res)) return;
     const url = new URL(req.url ?? '/', 'http://localhost');
     let file = normalize(join(base, decodeURIComponent(url.pathname)));
     if (!file.startsWith(base)) {
@@ -28,6 +32,7 @@ export function serve(dir, port) {
     res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
     createReadStream(file).pipe(res);
   });
+  server.requestTimeout = 0;
   server.listen(port, () => console.log(`http://localhost:${port}`));
   return server;
 }

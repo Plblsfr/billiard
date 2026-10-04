@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Billard anglais</title>
-    <meta name="description" content="Billard anglais (blackball) à 2 ou 3 joueurs, sur le même écran." />
+    <meta name="description" content="Billard anglais (blackball) à 2 ou 3 joueurs, sur le même écran ou en ligne." />
     <meta name="theme-color" content="#faf6f3" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -38,6 +38,13 @@
             </p>
             <form id="setup" novalidate>
               <fieldset class="field">
+                <legend>Où jouer</legend>
+                <div class="segmented" role="group" aria-label="Mode de jeu">
+                  <button type="button" data-mode="local" aria-pressed="true">Sur cet écran</button>
+                  <button type="button" data-mode="online" aria-pressed="false">En ligne</button>
+                </div>
+              </fieldset>
+              <fieldset class="field">
                 <legend>Joueurs</legend>
                 <div class="segmented" role="group" aria-label="Nombre de joueurs">
                   <button type="button" data-count="2" aria-pressed="true">2 joueurs</button>
@@ -46,10 +53,10 @@
               </fieldset>
               <div class="names">
                 <label class="field">
-                  <span>Joueur 1 <small>casse</small></span>
+                  <span id="p1-label">Joueur 1 <small>casse</small></span>
                   <input name="p1" autocomplete="off" maxlength="16" placeholder="Joueur 1" />
                 </label>
-                <label class="field">
+                <label class="field" id="p2-field">
                   <span>Joueur 2</span>
                   <input name="p2" autocomplete="off" maxlength="16" placeholder="Joueur 2" />
                 </label>
@@ -59,8 +66,40 @@
                 </label>
               </div>
               <div class="colours" id="colours" aria-hidden="true"></div>
-              <button type="submit" class="btn btn-plein btn-large">Jouer</button>
+              <button type="submit" class="btn btn-plein btn-large" id="btn-play">Jouer</button>
+              <div class="join" id="join-block" hidden>
+                <p class="or"><span>ou</span></p>
+                <div class="field">
+                  <label for="join-code">Code de la salle</label>
+                  <div class="join-row">
+                    <input
+                      id="join-code"
+                      autocomplete="off"
+                      autocapitalize="characters"
+                      spellcheck="false"
+                      maxlength="8"
+                      placeholder="ABCDE"
+                    />
+                    <button type="button" class="btn btn-contour" id="btn-join">Rejoindre</button>
+                  </div>
+                </div>
+              </div>
+              <p class="form-error" id="menu-error" role="alert" hidden></p>
             </form>
+          </div>
+        </section>
+
+        <section id="lobby" class="menu" hidden aria-labelledby="lobby-title">
+          <div class="menu-card">
+            <h2 id="lobby-title">Salle <span class="hl" id="lobby-code"></span></h2>
+            <p class="lead">Envoyez ce lien aux autres joueurs. La partie démarre dès que tout le monde est là.</p>
+            <div class="share">
+              <input id="lobby-link" readonly aria-label="Lien de la salle" />
+              <button type="button" class="btn btn-plein" id="btn-copy">Copier</button>
+            </div>
+            <ol class="seats" id="lobby-seats"></ol>
+            <p class="lobby-status" id="lobby-status" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-contour btn-large" id="btn-leave">Quitter la salle</button>
           </div>
         </section>
 
@@ -137,6 +176,12 @@
           le fautif est éliminé : ses billes quittent la table, la noire est replacée et la partie continue.
           Une noire rentrée à la casse est simplement replacée.
         </p>
+        <h3>En ligne</h3>
+        <p>
+          Choisir « En ligne », créer une salle et envoyer le lien (ou le code) aux autres joueurs. Chacun joue depuis
+          son appareil ; on voit la visée de celui qui a la main. Un joueur déconnecté reprend sa place en rouvrant le
+          lien.
+        </p>
         <h3>Commandes</h3>
         <ul>
           <li>glisser sur la table pour viser, molette ou ↺ ↻ pour affiner ;</li>
@@ -153,6 +198,7 @@
     <dialog id="end-dialog" class="modal" aria-labelledby="end-title">
       <h2 id="end-title"></h2>
       <p id="end-detail" class="lead"></p>
+      <p id="end-wait" class="lead" hidden>En attente de l’hôte pour la revanche…</p>
       <div class="modal-actions">
         <button type="button" class="btn btn-contour" id="end-menu">Menu</button>
         <button type="button" class="btn btn-plein" id="end-again">Revanche</button>
@@ -161,10 +207,10 @@
 
     <dialog id="confirm-dialog" class="modal" aria-labelledby="confirm-title">
       <h2 id="confirm-title">Abandonner la <span class="hl">partie</span> ?</h2>
-      <p class="lead">La partie en cours sera perdue.</p>
+      <p class="lead" id="confirm-lead">La partie en cours sera perdue.</p>
       <form method="dialog" class="modal-actions">
         <button class="btn btn-contour" value="cancel">Continuer</button>
-        <button class="btn btn-plein" value="ok">Nouvelle partie</button>
+        <button class="btn btn-plein" value="ok" id="confirm-ok">Nouvelle partie</button>
       </form>
     </dialog>
 

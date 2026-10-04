@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.json tsconfig.build.json ./
 COPY scripts ./scripts
+COPY server ./server
 COPY src ./src
 COPY tests ./tests
 COPY web ./web
@@ -13,7 +14,24 @@ ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 RUN npm test && npm run build
 
-# ---- 2. Runtime : nginx non root, port 8080 ----
+# ---- 2. Relais des parties en ligne (cible « relay »), port 8081 ----
+#   docker build --target relay -t billard-anglais-relay .
+FROM node:22-alpine AS relay
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.title="billard-anglais-relay" \
+      org.opencontainers.image.description="Serveur de salons du billard anglais en ligne" \
+      org.opencontainers.image.version="${APP_VERSION}"
+WORKDIR /app
+ENV NODE_ENV=production PORT=8081
+# copié depuis l'étape de build : l'image n'existe que si les tests passent
+COPY --from=build /app/server/relay.mjs /app/server/main.mjs ./server/
+USER node
+EXPOSE 8081
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8081/api/healthz || exit 1
+CMD ["node", "server/main.mjs"]
+
+# ---- 3. Runtime : nginx non root, port 8080 (cible par défaut) ----
 FROM nginxinc/nginx-unprivileged:stable-alpine
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="billard-anglais" \

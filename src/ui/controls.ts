@@ -8,6 +8,8 @@ export interface ControlsHost {
   /** Les commandes ne doivent pas réagir (modale ouverte, menu affiché…). */
   blocked(): boolean;
   shoot(angle: number, power: number, spin: number): void;
+  /** La blanche en main vient d'être posée. */
+  placed?(): void;
   /** Premier geste utilisateur : débloque l'audio. */
   gesture(): void;
 }
@@ -98,7 +100,7 @@ export class Controls {
       if (this.canvasPointer !== e.pointerId) return;
       this.canvasPointer = null;
       const m = this.active();
-      if (place && m?.phase === 'placing') m.placeCue();
+      if (place && m?.phase === 'placing') this.place(m);
     };
     cv.addEventListener('pointerup', (e) => end(e, true));
     cv.addEventListener('pointercancel', (e) => end(e, false));
@@ -238,7 +240,7 @@ export class Controls {
         m.moveCueInHand({ x: c.x + d.x, y: c.y + d.y });
       } else if ((e.key === 'Enter' || e.key === ' ') && !onButton) {
         e.preventDefault();
-        m.placeCue();
+        this.place(m);
       }
       return;
     }
@@ -274,6 +276,10 @@ export class Controls {
         this.sync();
         break;
     }
+  }
+
+  private place(m: Match): void {
+    if (m.placeCue()) this.host.placed?.();
   }
 
   private fire(): void {

@@ -70,3 +70,36 @@ describe('partie complète', () => {
     assert.equal(m.phase, 'aiming');
   });
 });
+
+describe('instantanés (jeu en ligne)', () => {
+  it('un instantané passé en JSON redonne la même partie', () => {
+    const rnd = seeded(7);
+    const a = new Match(['Anna', 'Bob', 'Chloé'], rnd);
+    a.placeCue();
+    a.shoot(0.01, 1, 0);
+    a.settle();
+    const snap = JSON.parse(JSON.stringify(a.snapshot()));
+    const b = Match.fromSnapshot(snap);
+    assert.deepEqual(b.snapshot(), a.snapshot());
+    assert.equal(b.phase, a.phase);
+    assert.equal(b.rules.current, a.rules.current);
+  });
+
+  it('un écran spectateur attend l’état officiel au lieu d’appliquer les règles', () => {
+    const shooter = new Match(['Anna', 'Bob'], seeded(11));
+    shooter.placeCue();
+    const viewer = Match.fromSnapshot(shooter.snapshot());
+    viewer.resolveLocally = false;
+
+    shooter.shoot(0, 1, 0);
+    viewer.shoot(0, 1, 0);
+    for (let i = 0; i < 4000 && shooter.phase === 'rolling'; i++) shooter.update(1 / 60);
+    for (let i = 0; i < 4000 && viewer.world.isMoving(); i++) viewer.update(1 / 60);
+
+    assert.notEqual(shooter.phase, 'rolling');
+    assert.equal(viewer.phase, 'rolling', 'le spectateur reste en attente');
+    assert.equal(viewer.lastOutcome, null);
+    viewer.restore(shooter.snapshot());
+    assert.deepEqual(viewer.snapshot(), shooter.snapshot());
+  });
+});

@@ -6,6 +6,15 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+/** Point de vue d'un écran en ligne. */
+export interface HudView {
+  /** Indice du joueur de cet écran dans la partie. */
+  me: number;
+  /** Indices des joueurs déconnectés. */
+  offline: number[];
+  connected: boolean;
+}
+
 export class Hud {
   private lastKey = '';
 
@@ -18,9 +27,9 @@ export class Hud {
   ) {}
 
   /** Redessine le bandeau si l'état a changé (appelé à chaque image). */
-  update(m: Match): void {
+  update(m: Match, view: HudView | null = null): void {
     const r = m.rules;
-    const key = JSON.stringify([m.phase, r, m.shots]);
+    const key = JSON.stringify([m.phase, r, m.shots, view]);
     if (key === this.lastKey) return;
     this.lastKey = key;
 
@@ -39,10 +48,12 @@ export class Hud {
         }
         if (isOnBlack(r, i) && !p.eliminated) chip = 'black';
         if (r.winner === i) info = 'Vainqueur';
+        if (view?.offline.includes(i)) info = `Hors ligne · ${info}`;
+        const you = view?.me === i ? ' <small class="you">vous</small>' : '';
         const badge = current ? `<span class="badge">${r.visits === 2 ? '2 coups' : 'À jouer'}</span>` : '<span></span>';
         return `<li class="player${p.eliminated ? ' is-out' : ''}" aria-current="${current}">
           <span class="chip" data-kind="${chip}"></span>
-          <span class="player-name">${escapeHtml(p.name)}</span>${badge}
+          <span class="player-name">${escapeHtml(p.name)}${you}</span>${badge}
           <span class="player-info">${info}</span>
         </li>`;
       })
@@ -67,8 +78,15 @@ export class Hud {
       rolling: ' ',
       over: 'Partie terminée.',
     };
-    this.hint.textContent = hints[m.phase];
-    const disabled = String(m.phase !== 'aiming');
+    const myTurn = !view || view.me === r.current;
+    let hint = hints[m.phase];
+    if (view && !view.connected) hint = 'Connexion perdue, reconnexion…';
+    else if (!myTurn && (m.phase === 'placing' || m.phase === 'aiming')) {
+      const who = r.players[r.current]!.name;
+      hint = view?.offline.includes(r.current) ? `${who} est hors ligne : en attente de son retour…` : `Au tour de ${who}…`;
+    }
+    this.hint.textContent = hint;
+    const disabled = String(m.phase !== 'aiming' || !myTurn);
     this.power.setAttribute('aria-disabled', disabled);
     this.spin.setAttribute('aria-disabled', disabled);
   }

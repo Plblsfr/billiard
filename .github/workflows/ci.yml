@@ -52,3 +52,20 @@ jobs:
           js=$(curl -fsS http://localhost:8080/ | grep -o '/assets/[a-f0-9]*/js/main.js')
           curl -fsSI "http://localhost:8080$js" | grep -qi 'immutable'
           docker logs billard
+      - name: Build du relais (sans publication)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: relay
+          push: false
+          load: true
+          tags: billard-anglais-relay:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test du relais
+        run: |
+          docker run -d --name relay --read-only --cap-drop ALL -p 8081:8081 billard-anglais-relay:ci
+          for i in $(seq 1 20); do curl -fsS http://localhost:8081/api/healthz && break; sleep 1; done
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"name":"CI","count":2}' \
+            http://localhost:8081/api/rooms | grep -q '"code"'
+          docker logs relay

@@ -189,7 +189,8 @@ main {
 }
 
 .field legend,
-.field > span {
+.field > span,
+.field > label {
   font-weight: 600;
   font-size: 0.9rem;
   padding: 0;
@@ -286,6 +287,122 @@ main {
 
 .chip[data-kind='open2'] {
   background: linear-gradient(90deg, var(--rouge) 50%, var(--jaune) 50%);
+}
+
+/* ---------- en ligne ---------- */
+.or {
+  display: flex;
+  align-items: center;
+  gap: var(--espace-3);
+  color: var(--gris);
+  font-size: 0.9rem;
+  margin: var(--espace-4) 0;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--trait);
+}
+
+.join-row,
+.share {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--espace-2);
+}
+
+.join-row input,
+.share input {
+  font: inherit;
+  min-width: 0;
+  padding: 0.6em 0.75em;
+  border: 1.5px solid var(--trait);
+  border-radius: var(--rayon);
+  background: #fff;
+  color: var(--noir);
+}
+
+#join-code {
+  font-family: var(--titre);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.share input {
+  color: var(--gris);
+  font-size: 0.9rem;
+}
+
+.form-error {
+  margin: var(--espace-4) 0 0;
+  color: var(--rose-texte);
+  font-weight: 600;
+}
+
+#lobby-code {
+  letter-spacing: 0.08em;
+}
+
+.seats {
+  list-style: none;
+  margin: var(--espace-6) 0 var(--espace-3);
+  padding: 0;
+  display: grid;
+  gap: var(--espace-2);
+}
+
+.seats li {
+  display: flex;
+  align-items: center;
+  gap: var(--espace-3);
+  padding: var(--espace-2) var(--espace-3);
+  border: 1.5px solid var(--trait);
+  border-radius: var(--rayon);
+}
+
+.seats li.is-empty {
+  border-style: dashed;
+  color: var(--gris);
+}
+
+.seats .seat-name {
+  flex: 1;
+  font-family: var(--titre);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seats li.is-empty .seat-name {
+  font-family: var(--texte);
+  font-weight: 400;
+}
+
+.seats small {
+  color: var(--gris);
+}
+
+.lobby-status {
+  min-height: 1.6em;
+  margin: 0 0 var(--espace-6);
+  color: var(--gris);
+}
+
+.you {
+  font-family: var(--texte);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  padding: 0 0.35em;
+  margin-left: var(--espace-1);
+  border: 1px solid currentColor;
+  border-radius: var(--rayon);
+  vertical-align: 0.15em;
 }
 
 /* ---------- jeu ---------- */

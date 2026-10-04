@@ -1,7 +1,7 @@
 {
   "name": "billard-anglais",
   "version": "1.0.0",
-  "description": "Billard anglais (blackball) jouable à 2 ou 3 joueurs dans le navigateur.",
+  "description": "Billard anglais (blackball) jouable à 2 ou 3 joueurs dans le navigateur, sur le même écran ou en ligne.",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,10 +9,11 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/clean.mjs build && tsc -p tsconfig.json && node --test \"build/tests/**/*.test.js\"",
+    "test": "node scripts/clean.mjs build && tsc -p tsconfig.json && node --test \"build/tests/**/*.test.js\" \"tests/**/*.test.mjs\"",
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
-    "preview": "node scripts/serve.mjs dist"
+    "preview": "node scripts/serve.mjs dist",
+    "relay": "node server/main.mjs"
   },
   "devDependencies": {
     "typescript": "^6.0.2"

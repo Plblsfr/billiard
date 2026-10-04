@@ -7,6 +7,16 @@ import { isGroup, type Ball } from './types.js';
 
 export type Phase = 'placing' | 'aiming' | 'rolling' | 'over';
 
+/** État complet d'une partie à l'arrêt, sérialisable en JSON (jeu en ligne). */
+export interface MatchSnapshot {
+  names: string[];
+  balls: Ball[];
+  rules: RulesState;
+  phase: Phase;
+  lastOutcome: ShotOutcome | null;
+  shots: number;
+}
+
 export interface MatchListener {
   physics?(e: PhysicsEvent): void;
   outcome?(o: ShotOutcome, m: Match): void;
@@ -20,6 +30,11 @@ export class Match {
   phase: Phase = 'placing';
   lastOutcome: ShotOutcome | null = null;
   shots = 0;
+  /**
+   * Faux sur les écrans qui regardent un coup joué ailleurs : à l'arrêt des billes,
+   * la partie attend l'état officiel (restore) au lieu d'appliquer elle-même les règles.
+   */
+  resolveLocally = true;
   private listeners: MatchListener[] = [];
 
   constructor(names: string[], rnd: Random = Math.random) {
@@ -80,9 +95,37 @@ export class Match {
     if (this.phase !== 'rolling') return false;
     this.world.advance(dt);
     this.flushEvents();
-    if (this.world.isMoving()) return false;
+    if (this.world.isMoving() || !this.resolveLocally) return false;
     this.finishShot();
     return true;
+  }
+
+  /** Copie de l'état, à prendre billes arrêtées (hors phase « rolling »). */
+  snapshot(): MatchSnapshot {
+    return {
+      names: [...this.names],
+      balls: this.world.balls.map((b) => ({ ...b, vx: 0, vy: 0 })),
+      rules: structuredClone(this.rules),
+      phase: this.phase,
+      lastOutcome: structuredClone(this.lastOutcome),
+      shots: this.shots,
+    };
+  }
+
+  /** Remplace l'état par un instantané (sans prévenir les écouteurs). */
+  restore(s: MatchSnapshot): void {
+    if (s.names.length !== this.playerCount) throw new Error('Nombre de joueurs différent');
+    this.world = new World(s.balls.map((b) => ({ ...b, vx: 0, vy: 0 })));
+    this.rules = structuredClone(s.rules);
+    this.phase = s.phase === 'rolling' ? 'aiming' : s.phase;
+    this.lastOutcome = structuredClone(s.lastOutcome);
+    this.shots = s.shots;
+  }
+
+  static fromSnapshot(s: MatchSnapshot): Match {
+    const m = new Match(s.names);
+    m.restore(s);
+    return m;
   }
 
   /** Termine immédiatement le coup en cours (tests, avance rapide). */
