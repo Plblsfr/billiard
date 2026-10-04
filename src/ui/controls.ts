@@ -1,10 +1,10 @@
 import { BALL_R } from '../game/constants.js';
 import type { Match } from '../game/match.js';
-import type { View } from '../render/view.js';
+import type { TableView } from '../render/types.js';
 
 export interface ControlsHost {
   match(): Match | null;
-  view(): View;
+  view(): TableView;
   /** Les commandes ne doivent pas réagir (modale ouverte, menu affiché…). */
   blocked(): boolean;
   shoot(angle: number, power: number, spin: number): void;
@@ -15,7 +15,8 @@ export interface ControlsHost {
 }
 
 export interface ControlsElements {
-  canvas: HTMLCanvasElement;
+  /** Surfaces de la table (canevas 2D et 3D) qui reçoivent le pointeur. */
+  canvases: HTMLElement[];
   power: HTMLElement;
   powerFill: HTMLElement;
   powerGrip: HTMLElement;
@@ -63,7 +64,7 @@ export class Controls {
   }
 
   private toWorld(e: PointerEvent): { x: number; y: number } {
-    const r = this.el.canvas.getBoundingClientRect();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return this.host.view().toWorld(e.clientX - r.left, e.clientY - r.top);
   }
 
@@ -73,9 +74,17 @@ export class Controls {
     this.angle = Math.atan2(p.y - c.y, p.x - c.x);
   }
 
+  /** Abandonne le geste en cours sur la table (la vue 3D reprend la main : rotation à deux doigts). */
+  cancelPointer(): void {
+    this.canvasPointer = null;
+  }
+
   // ---------- table ----------
   private bindCanvas(): void {
-    const cv = this.el.canvas;
+    for (const cv of this.el.canvases) this.bindSurface(cv);
+  }
+
+  private bindSurface(cv: HTMLElement): void {
     cv.addEventListener('pointerdown', (e) => {
       const m = this.active();
       if (!m || !e.isPrimary) return;

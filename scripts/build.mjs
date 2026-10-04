@@ -2,8 +2,10 @@
 //   dist/index.html
 //   dist/assets/<empreinte>/{styles.css, js/…}   (cache immuable)
 //   dist/{favicon.svg, manifest.webmanifest, robots.txt}
+// La vue 3D (three.js) est regroupée et minifiée par esbuild en un seul fichier, chargé à la demande.
 // Option --watch : reconstruit à chaque modification et sert dist/ sur http://localhost:5173
 import { execFileSync } from 'node:child_process';
+import { buildSync } from 'esbuild';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -30,6 +32,20 @@ export function build() {
   rmSync(tmp, { recursive: true, force: true });
   const [cmd, pre] = tscBin();
   execFileSync(cmd, [...pre, '-p', join(root, 'tsconfig.build.json')], { stdio: 'inherit', cwd: root });
+
+  // rendu 3D : three.js n'a pas de version minifiée, on ne garde que ce qui sert
+  const view3d = join(tmp, 'render', 'renderer3d.js');
+  buildSync({
+    entryPoints: [view3d],
+    outfile: view3d,
+    allowOverwrite: true,
+    bundle: true,
+    format: 'esm',
+    minify: true,
+    target: 'es2022',
+    legalComments: 'eof',
+    logLevel: 'warning',
+  });
 
   const css = readFileSync(join(root, 'web', 'styles.css'));
   const jsFiles = walk(tmp).filter((f) => f.endsWith('.js'));

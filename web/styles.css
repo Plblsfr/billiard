@@ -705,6 +705,44 @@ main {
   margin-top: var(--espace-8);
 }
 
+/* ---------- vue 3D ---------- */
+.view3d-bar {
+  position: absolute;
+  left: var(--espace-2);
+  bottom: var(--espace-2);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  background: var(--creme);
+  border: 1.5px solid var(--noir);
+  border-radius: var(--rayon);
+  max-width: calc(100% - var(--espace-4));
+}
+
+.view3d-bar button {
+  font: 600 0.8rem/1 var(--texte);
+  padding: 0.5em 0.7em;
+  border: 0;
+  border-radius: var(--rayon);
+  background: transparent;
+  color: var(--noir);
+  cursor: pointer;
+}
+
+.view3d-bar button:hover {
+  background: var(--creme-creux);
+}
+
+.view3d-bar button[aria-pressed='true'] {
+  background: var(--rose);
+}
+
+#table3d {
+  cursor: grab;
+}
+
 /* ---------- replay ---------- */
 .replay-bar {
   position: absolute;
@@ -1012,6 +1050,10 @@ main {
   }
 
   .replay-label {
+    display: none;
+  }
+
+  .cam-long {
     display: none;
   }
 

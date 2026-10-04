@@ -12,10 +12,15 @@ Billard anglais (blackball) jouable dans le navigateur, à **2 ou 3 joueurs**, s
 - Sons synthétisés (aucun fichier) : chocs, bandes, coup de queue, chute puis roulement dans la gouttière, roulement sur le drap,
   signaux de faute, de changement de main et de victoire.
 - Table tournée automatiquement en portrait sur téléphone.
+- **Vue 3D** au choix (bouton « Vue 3D ») : table, billes et queue en WebGL, ombres de la lampe. Caméra libre (clic droit,
+  deux doigts ou glisser quand on ne vise pas pour tourner, molette ou pincer pour zoomer, viser en pointant la table),
+  « Derrière la blanche » (glisser tourne la visée) ou « Dessus ». La 2D reste le mode par défaut ; les deux vues jouent
+  la même partie, en ligne aussi.
 - Jeu en ligne : une salle, un lien à partager, chacun joue depuis son appareil et voit la visée des autres.
 - Chat de salle en ligne (dès la salle d'attente, phrases rapides, messages non lus, historique gardé pour les reconnexions).
 - Replay : « Revoir le coup » rejoue le dernier coup, « Revoir la partie » toute la partie (pause, coup précédent / suivant, ×2).
-- Aucune dépendance d'exécution : TypeScript compilé en modules ES, servi par nginx ; petit serveur de salons en Node pur.
+- TypeScript compilé en modules ES, servi par nginx ; petit serveur de salons en Node pur. La vue 3D embarque three.js,
+  regroupé et minifié au build (environ 150 Ko compressés), chargé seulement quand on passe en 3D.
 
 ## Règles retenues
 
@@ -47,7 +52,7 @@ s'affichent, à envoyer aux autres joueurs. La partie démarre quand toutes les 
 
 ## Développement
 
-Node 22 suffit, la seule dépendance de développement est TypeScript.
+Node 22 suffit. Dépendances de développement : TypeScript, esbuild (regroupe la vue 3D) et three.js (embarqué dans la vue 3D).
 
 ```bash
 npm ci
@@ -64,7 +69,7 @@ Ajouter `?debug` à l'URL expose `window.__billard` (partie en cours) pour les t
 
 ```
 src/game/     physique, table, triangle, règles, orchestration d'une partie (sans DOM)
-src/render/   rendu canvas et transformation monde ↔ écran
+src/render/   rendu 2D (canvas), rendu 3D (three.js, chargé à la demande), transformation monde ↔ écran
 src/ui/       commandes, bandeau des joueurs, sons synthétisés
 src/net/      connexion au serveur de salons (jeu en ligne)
 server/       serveur de salons (Node, sans dépendance)
